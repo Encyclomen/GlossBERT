@@ -422,7 +422,7 @@ if __name__ == '__main__':
         #with open('Training_Corpora/SemCor/train_glossbert_dataset.pkl', 'rb') as rbf:
             #glossbert_dataset = pickle.load(rbf)
         glossbert_dataset = GlossBERTDataset_for_CGPair_Feature.from_data_csv(
-            'Evaluation_Datasets/semeval2007/semeval2007_test_token_cls.csv', tokenizer, max_seq_length=args.max_seq_length)
+            'Training_Corpora/SemCor/semcor_train_token_cls.csv', tokenizer, max_seq_length=args.max_seq_length)
         # Load open-source bert
         bert_model = BertModel.from_pretrained('bert-model')
         model = BaseModel(bert_model).to(device)

@@ -23,7 +23,7 @@ class GlossBERTDataset(Dataset):
         word_to_senses = {}
         last_sent_id = ''
         last_target_id = ''
-        for i, item in enumerate(tqdm(data, desc="Iteration"), start=0):
+        for i, item in enumerate(tqdm(data, desc="CSV Line Iteration"), start=0):
             target_id, label, text, gloss, target_index_start, target_index_end, sense_key = item
             doc_id, sent_id, inst_id = target_id.split('.')
             if doc_id + sent_id != last_sent_id:
@@ -105,7 +105,7 @@ class GlossBERTDataset_for_CGPair_Feature(GlossBERTDataset):
         #self.positive_examples = []
         #self.negative_examples = []
         self.all_examples = []
-        for sentence in self._sentences:
+        for sentence in tqdm(self._sentences, desc="Sentence Iteration"):
             for instance in sentence:
                 for idx, cand_sense in enumerate(instance, start=0):
                     sense_key, gloss, label = cand_sense
@@ -133,7 +133,7 @@ class GlossBERTDataset_for_CGPair_Feature(GlossBERTDataset):
                 cur_num_negative = cur_num_negative + 1
         '''
         self.all_features = []
-        for example in self.all_examples:
+        for example in tqdm(self.all_examples, desc="Training Example Iteration"):
             feature = convert_example_to_features(example, self.max_seq_length, tokenizer)
             self.all_features.append(feature)
 
@@ -158,7 +158,7 @@ class GlossBERTDataset_for_Sentence(GlossBERTDataset):
 
 if __name__ == '__main__':
     csv_paths = {
-        'train':       '../Training_Corpora/SemCor/train_glossbert_dataset.pkl',
+        'train':       '../Training_Corpora/SemCor/semcor_train_token_cls.csv',
         'dev':         '../Evaluation_Datasets/semeval2007/semeval2007_test_token_cls.csv',
         'seneval2013': '../Evaluation_Datasets/semeval2013/semeval2013.csv',
         'seneval2015': '../Evaluation_Datasets/semeval2015/semeval2015.csv',
@@ -171,7 +171,7 @@ if __name__ == '__main__':
     #with open('../Training_Corpora/SemCor/train_glossbert_dataset.pkl', 'rb') as rbf:
         #glossbert_dataset = pickle.load(rbf)
 
-    target = 'dev'
+    target = 'train'
     if target == 'train':
         glossbert_dataset = GlossBERTDataset_for_Sentence.from_data_csv(
             csv_paths['train'], tokenizer)
