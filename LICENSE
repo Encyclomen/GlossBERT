@@ -19,3 +19,17 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+CUDA_VISIBLE_DEVICES=1 python run_classifier_WSD_sent.py \
+--task_name WSD \
+--eval_data_dir ./Evaluation_Datasets/senseval3/senseval3_test_sent_cls_ws.csv \
+--output_dir results/sent_cls_ws/1314/4 \
+--bert_model results/sent_cls_ws/1314/4 \
+--do_test \
+--do_lower_case \
+--max_seq_length 512 \
+--train_batch_size 64 \
+--eval_batch_size 128 \
+--learning_rate 2e-5 \
+--num_train_epochs 6.0 \
+--seed 1314

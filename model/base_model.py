@@ -23,7 +23,9 @@ class BaseModel(nn.Module):
                         attention_mask=input_mask1_tensor, output_all_encoded_layers=False)
 
         hiddens_selected = torch.where((real_selection_mask_tensor==1), bert_hiddens1, torch.zeros_like(bert_hiddens1))
-        final_target_hidden_batch = (hiddens_selected.sum(1))/(selection_mask_tensor.sum(1).unsqueeze(-1))
+        scaling_factor_tensor = selection_mask_tensor.sum(1).unsqueeze(-1)
+        scaling_factor_tensor = torch.where(scaling_factor_tensor >= 1, scaling_factor_tensor, torch.ones_like(scaling_factor_tensor))
+        final_target_hidden_batch = (hiddens_selected.sum(1))/scaling_factor_tensor
 
         bert_hiddens2, _ = self.bert_model(input_id2s_tensor, token_type_ids=segment_ids2_tensor,
                                            attention_mask=input_mask2_tensor, output_all_encoded_layers=False)

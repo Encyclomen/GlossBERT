@@ -1,3 +1,4 @@
+import argparse
 import collections
 import logging
 import pickle
@@ -156,7 +157,27 @@ class GlossBERTDataset_for_Sentence(GlossBERTDataset):
         return self._sentences[item]
 
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+    ## Required parameters
+    parser.add_argument("--target",
+                        default='train',
+                        type=str,
+                        choices=['train', 'dev', 'semeval2013', 'semeval2015', 'semeval2', 'semeval3'])
+    parser.add_argument("--max_seq_length",
+                        default=128,
+                        type=int,
+                        help="The maximum total input sequence length after WordPiece tokenization. \n"
+                             "Sequences longer than this will be truncated, and sequences shorter \n"
+                             "than this will be padded.")
+    args = parser.parse_args()
+
+    return args
+
+
 if __name__ == '__main__':
+    args = parse_args()
+
     csv_paths = {
         'train':       '../Training_Corpora/SemCor/semcor_train_token_cls.csv',
         'dev':         '../Evaluation_Datasets/semeval2007/semeval2007_test_token_cls.csv',
@@ -174,31 +195,31 @@ if __name__ == '__main__':
     target = 'train'
     if target == 'train':
         glossbert_dataset = GlossBERTDataset_for_Sentence.from_data_csv(
-            csv_paths['train'], tokenizer)
+            csv_paths['train'], tokenizer, max_seq_length=args.max_seq_length)
         with open('../Training_Corpora/SemCor/train_glossbert_dataset.pkl', 'wb') as wbf:
             pickle.dump(glossbert_dataset, wbf)
     elif target == 'dev':
         glossbert_dataset = GlossBERTDataset_for_Sentence.from_data_csv(
-            csv_paths['dev'])
+            csv_paths['dev'], tokenizer, max_seq_length=args.max_seq_length)
         with open('../Evaluation_Datasets/semeval2007/semval2007_glossbert_dataset.pkl', 'wb') as wbf:
             pickle.dump(glossbert_dataset, wbf)
     elif target == 'semeval2013':
         glossbert_dataset = GlossBERTDataset_for_Sentence.from_data_csv(
-            csv_paths['semeval2013'])
+            csv_paths['semeval2013'], tokenizer, max_seq_length=args.max_seq_length)
         with open('../Evaluation_Datasets/semeval2013/semval2013_glossbert_dataset.pkl', 'wb') as wbf:
             pickle.dump(glossbert_dataset, wbf)
     elif target == 'semeval2015':
         glossbert_dataset = GlossBERTDataset_for_Sentence.from_data_csv(
-            csv_paths['semeval2015'])
+            csv_paths['semeval2015'], tokenizer, max_seq_length=args.max_seq_length)
         with open('../Evaluation_Datasets/semeval2015/semval2015_glossbert_dataset.pkl', 'wb') as wbf:
             pickle.dump(glossbert_dataset, wbf)
     elif target == 'semeval2':
         glossbert_dataset = GlossBERTDataset_for_Sentence.from_data_csv(
-            csv_paths['semeval2'])
+            csv_paths['semeval2'], tokenizer, max_seq_length=args.max_seq_length)
         with open('../Evaluation_Datasets/semeval2/semval2_glossbert_dataset.pkl', 'wb') as wbf:
             pickle.dump(glossbert_dataset, wbf)
     elif target == 'semeval3':
         glossbert_dataset = GlossBERTDataset_for_Sentence.from_data_csv(
-            csv_paths['semeval3'])
+            csv_paths['semeval3'], tokenizer, max_seq_length=args.max_seq_length)
         with open('../Evaluation_Datasets/semeval3/semval3_glossbert_dataset.pkl', 'wb') as wbf:
             pickle.dump(glossbert_dataset, wbf)

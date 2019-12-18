@@ -334,7 +334,7 @@ def bert_pretrain(model, dataset):
 
     sequential_sampler = SequentialSampler(dataset)
     #random_sampler = RandomSampler(glossbert_dataset)
-    bert_pretrain_dataloader = DataLoader(dataset, sampler=sequential_sampler, batch_size=args.train_batch_size,
+    bert_pretrain_dataloader = DataLoader(dataset[127435], sampler=sequential_sampler, batch_size=1,
                                           collate_fn=lambda x: zip(*x))
 
     num_train_optimization_steps = int(
@@ -419,10 +419,14 @@ if __name__ == '__main__':
 
     tokenizer = BertTokenizer.from_pretrained('bert-model', do_lower_case=True)
     if args.mode == 'bert_pretrain':
-        #with open('Training_Corpora/SemCor/train_glossbert_dataset.pkl', 'rb') as rbf:
-            #glossbert_dataset = pickle.load(rbf)
-        glossbert_dataset = GlossBERTDataset_for_CGPair_Feature.from_data_csv(
-            'Training_Corpora/SemCor/semcor_train_token_cls.csv', tokenizer, max_seq_length=args.max_seq_length)
+
+        #glossbert_dataset = GlossBERTDataset_for_CGPair_Feature.from_data_csv(
+            #'Training_Corpora/SemCor/semcor_train_token_cls.csv', tokenizer, max_seq_length=args.max_seq_length)
+        #with open('Training_Corpora/SemCor/train_glossbert_dataset.pkl', 'wb') as wbf:
+            #pickle.dump(glossbert_dataset, wbf)
+
+        with open('Training_Corpora/SemCor/train_glossbert_dataset.pkl', 'rb') as rbf:
+            glossbert_dataset = pickle.load(rbf)
         # Load open-source bert
         bert_model = BertModel.from_pretrained('bert-model')
         model = BaseModel(bert_model).to(device)
