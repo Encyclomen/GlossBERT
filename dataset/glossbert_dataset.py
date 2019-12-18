@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class GlossBERTDataset(Dataset):
-    def __init__(self, data, tokenizer, **kargs):
+    def __init__(self, data, tokenizer, **kwargs):
         # dataset content
         self._tokenizer = tokenizer
         self._sentences = []
@@ -81,7 +81,7 @@ class GlossBERTDataset(Dataset):
         self.sense_freq_counter = sense_freq_counter
 
     @classmethod
-    def from_data_csv(cls, data_csv_path, tokenizer, **kargs):
+    def from_data_csv(cls, data_csv_path, tokenizer, **kwargs):
         """
         csv file format:
         target_id	label	sentence	gloss	target_index_start	target_index_end	sense_key
@@ -90,18 +90,18 @@ class GlossBERTDataset(Dataset):
         :return: the GlossBERTDataset instance
         """
         data = pandas.read_csv(data_csv_path, sep="\t", na_filter=False).values
-        dataset = cls(data, tokenizer, **kargs)
+        dataset = cls(data, tokenizer, **kwargs)
 
         return dataset
 
 
 class GlossBERTDataset_for_CGPair_Feature(GlossBERTDataset):
-    def __init__(self, data, tokenizer, **kargs):
-        super().__init__(data, tokenizer)
+    def __init__(self, data, tokenizer, **kwargs):
+        super().__init__(data, tokenizer, **kwargs)
         try:
-            max_seq_length = kargs['max_seq_length']
+            self.max_seq_length = kwargs['max_seq_length']
         except:
-            max_seq_length = 100
+            self.max_seq_length = 100
         #self.positive_examples = []
         #self.negative_examples = []
         self.all_examples = []
@@ -109,6 +109,8 @@ class GlossBERTDataset_for_CGPair_Feature(GlossBERTDataset):
             for instance in sentence:
                 for idx, cand_sense in enumerate(instance, start=0):
                     sense_key, gloss, label = cand_sense
+                    if instance.end_pos > self.max_seq_length:
+                        label = -1
                     # sample: ((self.sentence.text, gloss), is_next, start_pos, span_length)
                     cur_example = InputExample(guid=instance.id, text_a=sentence.text,
                                  start_id=instance.start_pos, end_id=instance.end_pos,
@@ -132,7 +134,7 @@ class GlossBERTDataset_for_CGPair_Feature(GlossBERTDataset):
         '''
         self.all_features = []
         for example in self.all_examples:
-            feature = convert_example_to_features(example, max_seq_length, tokenizer)
+            feature = convert_example_to_features(example, self.max_seq_length, tokenizer)
             self.all_features.append(feature)
 
     def __getitem__(self, item):
@@ -144,8 +146,8 @@ class GlossBERTDataset_for_CGPair_Feature(GlossBERTDataset):
 
 
 class GlossBERTDataset_for_Sentence(GlossBERTDataset):
-    def __init__(self, tokenizer, **kwargs):
-        super().__init__(tokenizer)
+    def __init__(self, data, tokenizer, **kwargs):
+        super().__init__(data, tokenizer, **kwargs)
 
     def __len__(self):
         return len(self._sentences)
