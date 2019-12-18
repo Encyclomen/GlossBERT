@@ -365,17 +365,17 @@ def bert_pretrain(model, dataset):
             input_ids2, input_mask2, segment_ids2, \
             start_id, end_id, label = batch
 
-            input_id1s_tensor = torch.tensor(input_ids1, dtype=torch.long)
-            input_mask1_tensor = torch.tensor(input_mask1, dtype=torch.long)
-            segment_ids1_tensor = torch.tensor(segment_ids1, dtype=torch.long)
-            input_id2s_tensor = torch.tensor(input_ids1, dtype=torch.long)
-            input_mask2_tensor = torch.tensor(input_mask1, dtype=torch.long)
-            segment_ids2_tensor = torch.tensor(segment_ids1, dtype=torch.long)
-            label_tensor = torch.tensor(label, dtype=torch.long)
+            input_id1s_tensor = torch.tensor(input_ids1, dtype=torch.long, device=device)
+            input_mask1_tensor = torch.tensor(input_mask1, dtype=torch.long, device=device)
+            segment_ids1_tensor = torch.tensor(segment_ids1, dtype=torch.long, device=device)
+            input_id2s_tensor = torch.tensor(input_ids1, dtype=torch.long, device=device)
+            input_mask2_tensor = torch.tensor(input_mask1, dtype=torch.long, device=device)
+            segment_ids2_tensor = torch.tensor(segment_ids1, dtype=torch.long, device=device)
+            label_tensor = torch.tensor(label, dtype=torch.long, device=device)
 
             batch_size, seq_len = input_id1s_tensor.size()
             # The mask has 1 for real target
-            selection_mask_tensor = torch.zeros(batch_size, seq_len)
+            selection_mask_tensor = torch.zeros(batch_size, seq_len, device=device)
             for i in range(batch_size):
                 selection_mask_tensor[i][start_id[i]:end_id[i]] = 1
 
@@ -422,7 +422,7 @@ if __name__ == '__main__':
         #with open('Training_Corpora/SemCor/train_glossbert_dataset.pkl', 'rb') as rbf:
             #glossbert_dataset = pickle.load(rbf)
         glossbert_dataset = GlossBERTDataset_for_CGPair_Feature.from_data_csv(
-            'Evaluation_Datasets/semeval2007/semeval2007_test_token_cls.csv', tokenizer)
+            'Evaluation_Datasets/semeval2007/semeval2007_test_token_cls.csv', tokenizer, max_seq_length=args.max_seq_length)
         # Load open-source bert
         bert_model = BertModel.from_pretrained('bert-model')
         model = BaseModel(bert_model).to(device)
