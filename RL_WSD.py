@@ -22,6 +22,7 @@ from tqdm import tqdm, trange
 
 from torch.nn import CrossEntropyLoss, MSELoss
 
+from dataset.sampler import NegDownSampler
 from file_utils import PYTORCH_PRETRAINED_BERT_CACHE, WEIGHTS_NAME, CONFIG_NAME
 from model.definition import InputExample, InputFeatures
 from model.modeling import *
@@ -31,200 +32,6 @@ from optimization import BertAdam, warmup_linear
 from dataset.glossbert_dataset import *
 
 logger = logging.getLogger(__name__)
-
-
-class DataProcessor(object):
-    """Base class for data converters for sequence classification data sets."""
-
-    def get_train_examples(self, data_dir, label_data_dir):
-        """Gets a collection of `InputExample`s for the train set."""
-        raise NotImplementedError()
-
-    def get_dev_examples(self, data_dir, label_data_dir):
-        """Gets a collection of `InputExample`s for the dev set."""
-        raise NotImplementedError()
-
-    def get_test_examples(self, data_dir, label_data_dir):
-        """Gets a collection of `InputExample`s for the test set."""
-        raise NotImplementedError()
-
-    def get_labels(self):
-        """Gets the list of labels for this data set."""
-        raise NotImplementedError()
-
-    @classmethod
-    def _read_tsv(cls, input_file, quotechar=None):
-        """Reads a tab separated value file."""
-        with open(input_file, "r") as f:
-            reader = csv.reader(f, delimiter="\t", quotechar=quotechar)
-            lines = []
-            for line in reader:
-                lines.append(line)
-            return lines
-
-
-class WSD_token_Processor(DataProcessor):
-    """Processor for the WSD data set."""
-
-    def get_train_examples(self, data_dir, label_data_dir):
-        """See base class."""
-        train_data = pd.read_csv(data_dir, sep="\t", na_filter=False).values
-        with open(os.path.join(label_data_dir, "lemma2index_dict.pkl"), 'rb') as p:
-            lemma2index_dict = pickle.load(p)
-        return self._create_examples(train_data, "train", lemma2index_dict)
-
-    def get_dev_examples(self, data_dir, label_data_dir):
-        """See base class."""
-        dev_data = pd.read_csv(data_dir, sep="\t", na_filter=False).values
-        with open(os.path.join(label_data_dir, "lemma2index_dict.pkl"), 'rb') as p:
-            lemma2index_dict = pickle.load(p)
-        return self._create_examples(dev_data, "dev", lemma2index_dict)
-
-    def get_labels(self):
-        """See base class."""
-
-        return ["0", "1"]
-
-    def _create_examples(self, lines, set_type, lemma2index_dict):
-        """Creates examples for the training and dev sets."""
-        examples = []
-        # max_sen_length = 0
-        for (i, line) in enumerate(lines):
-            # if set_type == 'train' and i >=1000: break
-            # if set_type == 'dev' and i>=10000: break
-            guid = "%s-%s" % (set_type, i)
-            text_a = str(line[2])
-            text_b = str(line[3])
-            # length = len(text_a.split(' '))
-            # if length>max_sen_length: max_sen_length=length
-            start_id = int(line[4])
-            end_id = int(line[5])
-            label = str(line[1])
-
-            if i % 1000 == 0:
-                print(i)
-                print("guid=", guid)
-                print("text_a=", text_a)
-                print("text_b=", text_b)
-                print("start_id=", start_id)
-                print("end_id=", end_id)
-                print("label=", label)
-
-            examples.append(
-                InputExample(guid=guid, text_a=text_a, start_id=start_id, end_id=end_id,
-                             text_b=text_b, label=label))
-        # print("max_length", max_sen_length)
-        # print(len(lines))
-        return examples
-
-
-def convert_examples_to_features(examples, label_list, max_seq_length,
-                                 tokenizer, output_mode):
-    """Loads a data file into a list of `InputBatch`s."""
-
-    label_map = {label: i for i, label in enumerate(label_list)}
-
-    features = []
-    for (ex_index, example) in enumerate(tqdm(examples)):
-        if ex_index % 10000 == 0:
-            logger.info("Writing example %d of %d" % (ex_index, len(examples)))
-
-        orig_tokens = example.text_a.split(' ')
-        target_start = example.start_id
-        target_end = example.end_id
-        bert_tokens = []
-
-        bert_tokens.append("[CLS]")
-        for length in range(len(orig_tokens)):
-            if length == target_start:
-                target_to_tok_map_start = len(bert_tokens)
-            if length == target_end:
-                target_to_tok_map_end = len(bert_tokens)
-                break
-            bert_tokens.extend(tokenizer.tokenize(orig_tokens[length]))
-        # bert_tokens.append("[SEP]")
-        bert_tokens = tokenizer.tokenize(example.text_a)
-        bert_tokens = ["[CLS]"] + bert_tokens + ["[SEP]"]
-        segment_ids = [0] * len(bert_tokens)
-
-        tokens_b = None
-        if example.text_b:
-            tokens_b = tokenizer.tokenize(example.text_b)
-            # Modifies `tokens_a` and `tokens_b` in place so that the total
-            # length is less than the specified length.
-            # Account for [CLS], [SEP], [SEP] with "- 3"
-            _truncate_seq_pair(bert_tokens, tokens_b, max_seq_length - 3)
-        else:
-            # Account for [CLS] and [SEP] with "- 2"
-            if len(tokens_a) > max_seq_length - 2:
-                tokens_a = tokens_a[:(max_seq_length - 2)]
-
-        # assert len(bert_tokens) <= max_seq_length, "sentence must be shorter than max_seq_length"
-
-        bert_tokens += tokens_b + ["[SEP]"]
-        segment_ids += [1] * (len(tokens_b) + 1)
-
-        input_ids = tokenizer.convert_tokens_to_ids(bert_tokens)
-
-        # The mask has 1 for real tokens and 0 for padding tokens. Only real
-        # tokens are attended to.
-        input_mask = [1] * len(input_ids)
-
-        # Zero-pad up to the sequence length.
-        padding = [0] * (max_seq_length - len(input_ids))
-        input_ids += padding
-        input_mask += padding
-        segment_ids += padding
-
-        assert len(input_ids) == max_seq_length
-        assert len(input_mask) == max_seq_length
-        assert len(segment_ids) == max_seq_length
-
-        if output_mode == "classification":
-            label_id = label_map[example.label]
-        elif output_mode == "regression":
-            label_id = float(example.label)
-        else:
-            raise KeyError(output_mode)
-
-        # The mask has 1 for real target
-        target_mask = [0] * max_seq_length
-        for i in range(target_to_tok_map_start, target_to_tok_map_end):
-            target_mask[i] = 1
-
-        if ex_index < 5:
-            logger.info("*** Example ***")
-            logger.info("guid: %s" % (example.guid))
-            logger.info("tokens: %s" % " ".join(
-                [str(x) for x in bert_tokens]))
-            logger.info("input_ids: %s" % " ".join([str(x) for x in input_ids]))
-            logger.info("input_mask: %s" % " ".join([str(x) for x in input_mask]))
-            logger.info(
-                "segment_ids: %s" % " ".join([str(x) for x in segment_ids]))
-            logger.info("label: %s (id = %d)" % (example.label, label_id))
-            logger.info("target_mask: %s" % " ".join([str(x) for x in target_mask]))
-
-        features.append(
-            InputFeatures(input_ids=input_ids,
-                          input_mask=input_mask,
-                          segment_ids=segment_ids,
-                          label_id=label_id,
-                          target_mask=target_mask))
-    return features
-
-
-def _truncate_seq_pair(tokens_a, tokens_b, max_length):
-    """Truncates a sequence pair in place to the maximum length."""
-
-    # This is a simple heuristic which will always truncate the longer sequence
-    # one token at a time. This makes more sense than truncating an equal percent
-    # of tokens from each, since if one sequence is very short then each token
-    # that's truncated likely contains more information than a longer sequence.
-    while True:
-        total_length = len(tokens_a) + len(tokens_b)
-        if total_length <= max_length:
-            break
-        tokens_b.pop()
 
 
 def parse_args():
@@ -284,6 +91,10 @@ def parse_args():
                         default=32,
                         type=int,
                         help="Total batch size for training.")
+    parser.add_argument("--neg_pos_ratio",
+                        default=1,
+                        type=float,
+                        help="Ratio of negative training examples over positive ones.")
     parser.add_argument("--eval_batch_size",
                         default=8,
                         type=int,
@@ -331,14 +142,13 @@ def parse_args():
 
 
 def bert_pretrain(model, dataset):
-
-    sequential_sampler = SequentialSampler(dataset)
-    #random_sampler = RandomSampler(glossbert_dataset)
-    bert_pretrain_dataloader = DataLoader(dataset[127435], sampler=sequential_sampler, batch_size=1,
+    #sampler = SequentialSampler(dataset)
+    #sampler = RandomSampler(glossbert_dataset)
+    sampler = NegDownSampler(dataset, neg_pos_ratio=args.neg_pos_ratio)
+    bert_pretrain_dataloader = DataLoader(dataset, sampler=sampler, batch_size=1,
                                           collate_fn=lambda x: zip(*x))
-
     num_train_optimization_steps = int(
-        len(dataset) / args.train_batch_size / args.gradient_accumulation_steps) * args.num_train_epochs
+        len(sampler) / args.train_batch_size / args.gradient_accumulation_steps) * args.num_train_epochs
     observe_interval = 1000
     logger.info("***** Running training *****")
     logger.info("  Num examples = %d", len(dataset))
@@ -359,6 +169,7 @@ def bert_pretrain(model, dataset):
                          t_total=num_train_optimization_steps)
 
     for epoch in trange(int(args.num_train_epochs), desc="Epoch"):
+        wf = open(('output/log_%d.txt' % epoch), 'w')
         tr_loss = 0
         for step, batch in enumerate(tqdm(bert_pretrain_dataloader, desc="Iteration"), start=1):
             guid, input_ids1, input_mask1, segment_ids1, \
@@ -392,7 +203,9 @@ def bert_pretrain(model, dataset):
                 optimizer.zero_grad()
             if step % observe_interval == 0:
                 print('Epoch: %d, Step: %d, avg_loss: %.2f' % (epoch, step, (tr_loss/observe_interval)))
+                wf.write('Epoch: %d, Step: %d, avg_loss: %.4f\n' % (epoch, step, (tr_loss / observe_interval)))
                 tr_loss = 0
+        wf.close()
         # Save a trained model
         logger.info("** ** * Saving fine-tuned model ** ** * ")
         model_to_save = model.module if hasattr(model, 'module') else model  # Only save the model it-self
@@ -419,13 +232,12 @@ if __name__ == '__main__':
     tokenizer = BertTokenizer.from_pretrained('bert-model', do_lower_case=True)
     if args.mode == 'bert_pretrain':
 
-        #glossbert_dataset = GlossBERTDataset_for_CGPair_Feature.from_data_csv(
-            #'Training_Corpora/SemCor/semcor_train_token_cls.csv', tokenizer, max_seq_length=args.max_seq_length)
-        #with open('Training_Corpora/SemCor/train_glossbert_dataset.pkl', 'wb') as wbf:
-            #pickle.dump(glossbert_dataset, wbf)
-
-        with open('Training_Corpora/SemCor/train_glossbert_dataset.pkl', 'rb') as rbf:
-            glossbert_dataset = pickle.load(rbf)
+        glossbert_dataset = GlossBERTDataset_for_CGPair_Feature.from_data_csv(
+            'Training_Corpora/SemCor/semcor_train_token_cls.csv', tokenizer, max_seq_length=args.max_seq_length)
+        with open('Training_Corpora/SemCor/train_glossbert_dataset.pkl', 'wb') as wbf:
+            pickle.dump(glossbert_dataset, wbf)
+        #with open('Training_Corpora/SemCor/train_glossbert_dataset.pkl', 'rb') as rbf:
+            #glossbert_dataset = pickle.load(rbf)
         # Load open-source bert
         bert_model = BertModel.from_pretrained('bert-model')
         model = BaseModel(bert_model).to(device)

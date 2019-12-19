@@ -105,7 +105,11 @@ class GlossBERTDataset_for_CGPair_Feature(GlossBERTDataset):
             self.max_seq_length = 100
         #self.positive_examples = []
         #self.negative_examples = []
+
+        self.pos_indexes = []
+        self.neg_indexes = []
         self.all_examples = []
+        self.num_invalid_indexes = []
         for sentence in tqdm(self._sentences, desc="Sentence Iteration"):
             for instance in sentence:
                 for idx, cand_sense in enumerate(instance, start=0):
@@ -116,23 +120,16 @@ class GlossBERTDataset_for_CGPair_Feature(GlossBERTDataset):
                     cur_example = InputExample(guid=instance.id, text_a=sentence.text,
                                  start_id=instance.start_pos, end_id=instance.end_pos,
                                  text_b=gloss, label=label)
-                    #if label == 1:
+                    if label == 1:
+                        self.pos_indexes.append(len(self.all_examples))
                         #self.positive_examples.append(cur_example)
-                    #else:
+                    elif label == 0:
+                        self.neg_indexes.append(len(self.all_examples))
                         #self.negative_examples.append(cur_example)
+                    else:  # label == -1
+                        self.num_invalid_indexes.append(len(self.all_examples))
                     self.all_examples.append(cur_example)
-        '''
-        self.index_mapping = {}
-        cur_num_positive = 0
-        cur_num_negative = 0
-        for idx, sample in enumerate(self.all_cand_senses, start=0):
-            if sample[1] == 0:
-                self.index_mapping[str(cur_num_positive)] = idx
-                cur_num_positive = cur_num_positive + 1
-            else:
-                self.index_mapping[str(cur_num_negative+len(self.positive_samples))] = idx
-                cur_num_negative = cur_num_negative + 1
-        '''
+
         self.all_features = []
         for example in tqdm(self.all_examples, desc="Training Example Iteration"):
             feature = convert_example_to_features(example, self.max_seq_length, tokenizer)
@@ -157,7 +154,7 @@ class GlossBERTDataset_for_Sentence(GlossBERTDataset):
         return self._sentences[item]
 
 
-def parse_args():
+def _parse_args():
     parser = argparse.ArgumentParser()
     ## Required parameters
     parser.add_argument("--target",
@@ -176,7 +173,7 @@ def parse_args():
 
 
 if __name__ == '__main__':
-    args = parse_args()
+    args = _parse_args()
 
     csv_paths = {
         'train':       '../Training_Corpora/SemCor/semcor_train_token_cls.csv',
@@ -192,14 +189,14 @@ if __name__ == '__main__':
     #with open('../Training_Corpora/SemCor/train_glossbert_dataset.pkl', 'rb') as rbf:
         #glossbert_dataset = pickle.load(rbf)
 
-    target = 'train'
+    target = 'dev'
     if target == 'train':
-        glossbert_dataset = GlossBERTDataset_for_Sentence.from_data_csv(
+        glossbert_dataset = GlossBERTDataset_for_CGPair_Feature.from_data_csv(
             csv_paths['train'], tokenizer, max_seq_length=args.max_seq_length)
         with open('../Training_Corpora/SemCor/train_glossbert_dataset.pkl', 'wb') as wbf:
             pickle.dump(glossbert_dataset, wbf)
     elif target == 'dev':
-        glossbert_dataset = GlossBERTDataset_for_Sentence.from_data_csv(
+        glossbert_dataset = GlossBERTDataset_for_CGPair_Feature.from_data_csv(
             csv_paths['dev'], tokenizer, max_seq_length=args.max_seq_length)
         with open('../Evaluation_Datasets/semeval2007/semval2007_glossbert_dataset.pkl', 'wb') as wbf:
             pickle.dump(glossbert_dataset, wbf)

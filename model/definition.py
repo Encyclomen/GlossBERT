@@ -24,8 +24,8 @@ class Instance:
         self.id = id
         self.sentence = sentence
         self.target_word = target_word
-        self.start_pos = start_pos
-        self.end_pos = end_pos
+        self.start_pos = int(start_pos)
+        self.end_pos = int(end_pos)
 
         self.candidate_senses = []
 
@@ -63,9 +63,9 @@ class InputExample(object):
         self.guid = guid
         self.text_a = text_a
         self.text_b = text_b
-        self.label = label
-        self.start_id = start_id
-        self.end_id = end_id
+        self.label = int(label)
+        self.start_id = int(start_id)
+        self.end_id = int(end_id)
 
 
 class InputFeatures(object):
