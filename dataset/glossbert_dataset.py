@@ -110,7 +110,7 @@ class GlossBERTDataset_for_CGPair_Feature(GlossBERTDataset):
             for instance in sentence:
                 for idx, cand_sense in enumerate(instance, start=0):
                     sense_key, gloss, label = cand_sense
-                    if instance.end_pos > self.max_seq_length:
+                    if instance.end_pos >= self.max_seq_length:
                         label = -1
                     # sample: ((self.sentence.text, gloss), is_next, start_pos, span_length)
                     cur_example = InputExample(guid=instance.id, text_a=sentence.text,

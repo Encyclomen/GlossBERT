@@ -400,7 +400,6 @@ def bert_pretrain(model, dataset):
         torch.save(model_to_save.state_dict(), output_model_file)
 
 
-
 if __name__ == '__main__':
     bert_pretrain_logger = logging.getLogger(__name__)
 
