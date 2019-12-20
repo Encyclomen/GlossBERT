@@ -40,7 +40,7 @@ def parse_args():
     parser.add_argument("--mode",
                         default='bert-pretrain',
                         type=str,
-                        choices=["bert-pretrain", "eval-base"],
+                        choices=["bert-pretrain", "eval-baseline"],
                         help="The mode to run.")
     parser.add_argument("--train_data_dir",
                         default=None,
@@ -295,7 +295,7 @@ if __name__ == '__main__':
         bert_model = BertModel.from_pretrained('bert-model')
         model = BaseModel(bert_model).to(device)
         bert_pretrain(model, glossbert_dataset)
-    elif args.mode == 'eval-base':
+    elif args.mode == 'eval-baseline':
         glossbert_dataset = GlossBERTDataset_for_CGPair_Feature.from_data_csv(
             'Evaluation_Datasets/semeval2007/semeval2007_test_token_cls.csv', tokenizer, max_seq_length=args.max_seq_length)
         #with open('Evaluation_Datasets/semeval2007/semval2007_glossbert_dataset.pkl', 'rb') as rbf:
