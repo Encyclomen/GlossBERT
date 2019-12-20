@@ -38,9 +38,9 @@ def parse_args():
     parser = argparse.ArgumentParser()
     ## Required parameters
     parser.add_argument("--mode",
-                        default='bert_pretrain',
+                        default='bert-pretrain',
                         type=str,
-                        choices=["bert_pretrain", "bert_test"],
+                        choices=["bert-pretrain", "eval-base"],
                         help="The mode to run.")
     parser.add_argument("--train_data_dir",
                         default=None,
@@ -88,7 +88,7 @@ def parse_args():
                              "Sequences longer than this will be truncated, and sequences shorter \n"
                              "than this will be padded.")
     parser.add_argument("--train_batch_size",
-                        default=32,
+                        default=20,
                         type=int,
                         help="Total batch size for training.")
     parser.add_argument("--neg_pos_ratio",
@@ -96,7 +96,7 @@ def parse_args():
                         type=float,
                         help="Ratio of negative training examples over positive ones.")
     parser.add_argument("--eval_batch_size",
-                        default=8,
+                        default=10,
                         type=int,
                         help="Total batch size for eval.")
     parser.add_argument("--learning_rate",
@@ -136,6 +136,10 @@ def parse_args():
                         help="Loss scaling to improve fp16 numeric stability. Only used when fp16 set to True.\n"
                              "0 (default value): dynamic loss scaling.\n"
                              "Positive power of 2: static loss scaling value.\n")
+    parser.add_argument("--checkpoint",
+                        default='output/1_pytorch_model.bin',
+                        type=str,
+                        help="The saved checkpoint model path to load.")
     args = parser.parse_args()
 
     return args
@@ -145,11 +149,11 @@ def bert_pretrain(model, dataset):
     #sampler = SequentialSampler(dataset)
     #sampler = RandomSampler(glossbert_dataset)
     sampler = NegDownSampler(dataset, neg_pos_ratio=args.neg_pos_ratio)
-    bert_pretrain_dataloader = DataLoader(dataset, sampler=sampler, batch_size=1,
+    bert_pretrain_dataloader = DataLoader(dataset, sampler=sampler, batch_size=args.train_batch_size,
                                           collate_fn=lambda x: zip(*x))
     num_train_optimization_steps = int(
         len(sampler) / args.train_batch_size / args.gradient_accumulation_steps) * args.num_train_epochs
-    observe_interval = 1000
+    observe_interval = 500
     logger.info("***** Running training *****")
     logger.info("  Num examples = %d", len(dataset))
     logger.info("  Batch size = %d", args.train_batch_size)
@@ -169,10 +173,11 @@ def bert_pretrain(model, dataset):
                          t_total=num_train_optimization_steps)
 
     for epoch in trange(int(args.num_train_epochs), desc="Epoch"):
+        sampler.refresh_sampler()
         wf = open(('output/log_%d.txt' % epoch), 'w')
         tr_loss = 0
         for step, batch in enumerate(tqdm(bert_pretrain_dataloader, desc="Iteration"), start=1):
-            guid, input_ids1, input_mask1, segment_ids1, \
+            guid, cand_sense_key, input_ids1, input_mask1, segment_ids1, \
             input_ids2, input_mask2, segment_ids2, \
             start_id, end_id, label = batch
 
@@ -202,7 +207,7 @@ def bert_pretrain(model, dataset):
                 optimizer.step()
                 optimizer.zero_grad()
             if step % observe_interval == 0:
-                print('Epoch: %d, Step: %d, avg_loss: %.2f' % (epoch, step, (tr_loss/observe_interval)))
+                print('Epoch: %d, Step: %d, avg_loss: %.4f' % (epoch, step, (tr_loss/observe_interval)))
                 wf.write('Epoch: %d, Step: %d, avg_loss: %.4f\n' % (epoch, step, (tr_loss / observe_interval)))
                 tr_loss = 0
         wf.close()
@@ -211,6 +216,51 @@ def bert_pretrain(model, dataset):
         model_to_save = model.module if hasattr(model, 'module') else model  # Only save the model it-self
         output_model_file = os.path.join(args.output_dir, '_'.join((str(epoch), WEIGHTS_NAME)))
         torch.save(model_to_save.state_dict(), output_model_file)
+
+
+def eval_baseline(model, dataset):
+    model.eval()
+
+    sampler = SequentialSampler(dataset)
+    eval_dataloader = DataLoader(dataset, sampler=sampler, batch_size=args.eval_batch_size, collate_fn=lambda x: zip(*x))
+    loss_function = torch.nn.CrossEntropyLoss(ignore_index=-1)
+    observe_interval = 100
+
+    wf = open('output/eval_log.txt', 'w')
+    tr_loss = 0
+    for step, batch in enumerate(tqdm(eval_dataloader, desc="Iteration"), start=1):
+        guid, cand_sense_key, input_ids1, input_mask1, segment_ids1, \
+        input_ids2, input_mask2, segment_ids2, \
+        start_id, end_id, label = batch
+
+        input_id1s_tensor = torch.tensor(input_ids1, dtype=torch.long, device=device)
+        input_mask1_tensor = torch.tensor(input_mask1, dtype=torch.long, device=device)
+        segment_ids1_tensor = torch.tensor(segment_ids1, dtype=torch.long, device=device)
+        input_id2s_tensor = torch.tensor(input_ids1, dtype=torch.long, device=device)
+        input_mask2_tensor = torch.tensor(input_mask1, dtype=torch.long, device=device)
+        segment_ids2_tensor = torch.tensor(segment_ids1, dtype=torch.long, device=device)
+        label_tensor = torch.tensor(label, dtype=torch.long, device=device)
+
+        batch_size, seq_len = input_id1s_tensor.size()
+        # The mask has 1 for real target
+        selection_mask_tensor = torch.zeros(batch_size, seq_len, device=device)
+        for i in range(batch_size):
+            selection_mask_tensor[i][start_id[i]:end_id[i]] = 1
+
+        with torch.no_grad():
+            logits = model(input_id1s_tensor, input_mask1_tensor, segment_ids1_tensor, selection_mask_tensor,
+                           input_id2s_tensor, input_mask2_tensor, segment_ids2_tensor)
+        loss = loss_function(logits, label_tensor)
+        tr_loss += loss.item()
+
+        pred = logits.argmax(dim=1).tolist()
+        probs = F.softmax(logits, dim=-1)
+        result_batch = [(pred[i], probs[i][0].item(), probs[i][1].item()) for i in range(args.eval_batch_size)]
+        for result in result_batch:
+            wf.write(str(result[0])+' '+str(result[1])+' '+str(result[2])+'\n')
+    wf.close()
+    print('Avg_loss: %.4f' % (tr_loss / observe_interval))
+
 
 
 if __name__ == '__main__':
@@ -230,23 +280,28 @@ if __name__ == '__main__':
         device, n_gpu, bool(args.local_rank != -1), args.fp16))
 
     tokenizer = BertTokenizer.from_pretrained('bert-model', do_lower_case=True)
-    if args.mode == 'bert_pretrain':
+    if args.mode == 'bert-pretrain':
 
         glossbert_dataset = GlossBERTDataset_for_CGPair_Feature.from_data_csv(
             'Training_Corpora/SemCor/semcor_train_token_cls.csv', tokenizer, max_seq_length=args.max_seq_length)
-        with open('Training_Corpora/SemCor/train_glossbert_dataset.pkl', 'wb') as wbf:
-            pickle.dump(glossbert_dataset, wbf)
+            # 'Evaluation_Datasets/semeval2007/semeval2007_test_token_cls.csv', tokenizer, max_seq_length=args.max_seq_length)
+            # 'Training_Corpora/SemCor/semcor_train_token_cls.csv', tokenizer, max_seq_length=args.max_seq_length)
+        #with open('Training_Corpora/SemCor/train_glossbert_dataset.pkl', 'wb') as wbf:
+            #pickle.dump(glossbert_dataset, wbf)
+        print('Loading glossbert dataset ...')
         #with open('Training_Corpora/SemCor/train_glossbert_dataset.pkl', 'rb') as rbf:
             #glossbert_dataset = pickle.load(rbf)
         # Load open-source bert
         bert_model = BertModel.from_pretrained('bert-model')
         model = BaseModel(bert_model).to(device)
         bert_pretrain(model, glossbert_dataset)
-    elif args.mode == 'bert_test':
-        with open('Evaluation_Datasets/semeval2013/semval2013_glossbert_dataset.pkl', 'rb') as rbf:
-            glossbert_dataset = pickle.load(rbf)
+    elif args.mode == 'eval-base':
+        glossbert_dataset = GlossBERTDataset_for_CGPair_Feature.from_data_csv(
+            'Evaluation_Datasets/semeval2007/semeval2007_test_token_cls.csv', tokenizer, max_seq_length=args.max_seq_length)
+        #with open('Evaluation_Datasets/semeval2007/semval2007_glossbert_dataset.pkl', 'rb') as rbf:
+            #glossbert_dataset = pickle.load(rbf)
         # Load open-source bert
         bert_model = BertModel.from_pretrained('.cache')
         model = BaseModel(bert_model).to(device)
-        model.load_state_dict(torch.load('output/2_pytorch_model.bin', map_location=torch.device('cpu')))
-        bert_pretrain(model, glossbert_dataset)
+        model.load_state_dict(torch.load(args.checkpoint))
+        eval_baseline(model, glossbert_dataset)

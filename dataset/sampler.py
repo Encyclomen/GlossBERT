@@ -33,7 +33,7 @@ class NegDownSampler(Sampler):
     def refresh_sampler(self, neg_pos_ratio=None):
         if neg_pos_ratio is not None:
             self.neg_pos_ratio = neg_pos_ratio
-        self.__resample_neg_instance(neg_pos_ratio=self.neg_pos_ratio)
+        self.__resample_neg_instance()
 
     def __resample_neg_instance(self):
         num_pos_indexes = len(self.pos_indexes)

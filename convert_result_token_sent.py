@@ -3,6 +3,7 @@ import numpy as np
 import argparse
 import os
 
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset",
@@ -23,7 +24,6 @@ def main():
                         help="Output dir of final results")
     args = parser.parse_args()
 
-
     dataset = args.dataset
     input_file_name = args.input_file
     output_dir = args.output_dir
@@ -40,7 +40,6 @@ def main():
     for i in range(1,len(test_data)):
         if test_data[i][0] != test_data[i-1][0]:
             seg.append(i)
-            
 
     results=[]
     num=0
@@ -51,7 +50,6 @@ def main():
             results.append((q,test_data[num][-1]))
             num+=1
             s = f.readline().strip()
-
 
     with open(os.path.join(output_dir, "final_result_"+dataset+'.txt'),"w",encoding="utf-8") as f:
         for i in range(len(seg)):

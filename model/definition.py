@@ -48,7 +48,7 @@ class Instance:
 class InputExample(object):
     """A single training/test example for simple sequence classification."""
 
-    def __init__(self, guid, text_a, start_id, end_id, text_b=None, label=None):
+    def __init__(self, guid, text_a, start_id, end_id, cand_sense_key, text_b=None, label=None):
         """Constructs a InputExample.
 
         Args:
@@ -62,10 +62,11 @@ class InputExample(object):
         """
         self.guid = guid
         self.text_a = text_a
-        self.text_b = text_b
-        self.label = int(label)
         self.start_id = int(start_id)
         self.end_id = int(end_id)
+        self.cand_sense_key = cand_sense_key
+        self.text_b = text_b
+        self.label = int(label)
 
 
 class InputFeatures(object):

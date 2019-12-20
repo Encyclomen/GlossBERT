@@ -109,6 +109,7 @@ def convert_single_example_to_features(ori_tokens, max_seq_length, tokenizer):
 
 def convert_example_to_features(example, max_seq_length, tokenizer):
     guid = example.guid
+    cand_sense_key = example.cand_sense_key
     text_a = example.text_a
     text_b = example.text_b
     label = example.label
@@ -120,7 +121,7 @@ def convert_example_to_features(example, max_seq_length, tokenizer):
     input_ids1, input_mask1, segment_ids1 = convert_single_example_to_features(tokens_a, max_seq_length, tokenizer)
     input_ids2, input_mask2, segment_ids2 = convert_single_example_to_features(tokens_b, max_seq_length, tokenizer)
 
-    return (guid, input_ids1, input_mask1, segment_ids1, input_ids2, input_mask2, segment_ids2, start_id, end_id, label)
+    return (guid, cand_sense_key, input_ids1, input_mask1, segment_ids1, input_ids2, input_mask2, segment_ids2, start_id, end_id, label)
 
 
 def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer, output_mode='classification'):

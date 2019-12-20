@@ -117,7 +117,7 @@ class GlossBERTDataset_for_CGPair_Feature(GlossBERTDataset):
                     if instance.end_pos >= self.max_seq_length:
                         label = -1
                     # sample: ((self.sentence.text, gloss), is_next, start_pos, span_length)
-                    cur_example = InputExample(guid=instance.id, text_a=sentence.text,
+                    cur_example = InputExample(guid=instance.id, cand_sense_key=sense_key, text_a=sentence.text,
                                  start_id=instance.start_pos, end_id=instance.end_pos,
                                  text_b=gloss, label=label)
                     if label == 1:
@@ -178,18 +178,18 @@ if __name__ == '__main__':
     csv_paths = {
         'train':       '../Training_Corpora/SemCor/semcor_train_token_cls.csv',
         'dev':         '../Evaluation_Datasets/semeval2007/semeval2007_test_token_cls.csv',
-        'seneval2013': '../Evaluation_Datasets/semeval2013/semeval2013.csv',
-        'seneval2015': '../Evaluation_Datasets/semeval2015/semeval2015.csv',
-        'seneval2':    '../Evaluation_Datasets/senseval2/senseval2.csv',
-        'seneval3':    '../Evaluation_Datasets/senseval3/senseval3.csv',
-        'ALL':         '../Evaluation_Datasets/ALL/ALL.csv'
+        '2013': '../Evaluation_Datasets/senseval2013/semeval2013_test_token_cls.csv',
+        '2015': '../Evaluation_Datasets/senseval2015/semeval2015_test_token_cls.csv',
+        '2':    '../Evaluation_Datasets/senseval2/senseval2_test_token_cls.csv',
+        '3':    '../Evaluation_Datasets/senseval3/senseval3_test_token_cls.csv',
+        'ALL':         '../Evaluation_Datasets/ALL/ALL_test_token_cls.csv'
     }
     tokenizer = BertTokenizer.from_pretrained('../bert-model', do_lower_case=True)
 
     #with open('../Training_Corpora/SemCor/train_glossbert_dataset.pkl', 'rb') as rbf:
         #glossbert_dataset = pickle.load(rbf)
 
-    target = 'dev'
+    target = '3'
     if target == 'train':
         glossbert_dataset = GlossBERTDataset_for_CGPair_Feature.from_data_csv(
             csv_paths['train'], tokenizer, max_seq_length=args.max_seq_length)
@@ -200,23 +200,28 @@ if __name__ == '__main__':
             csv_paths['dev'], tokenizer, max_seq_length=args.max_seq_length)
         with open('../Evaluation_Datasets/semeval2007/semval2007_glossbert_dataset.pkl', 'wb') as wbf:
             pickle.dump(glossbert_dataset, wbf)
-    elif target == 'semeval2013':
-        glossbert_dataset = GlossBERTDataset_for_Sentence.from_data_csv(
-            csv_paths['semeval2013'], tokenizer, max_seq_length=args.max_seq_length)
-        with open('../Evaluation_Datasets/semeval2013/semval2013_glossbert_dataset.pkl', 'wb') as wbf:
+    elif target == '2013':
+        glossbert_dataset = GlossBERTDataset_for_CGPair_Feature.from_data_csv(
+            csv_paths['2013'], tokenizer, max_seq_length=args.max_seq_length)
+        with open('../Evaluation_Datasets/senseval2013/senseval2013_glossbert_dataset.pkl', 'wb') as wbf:
             pickle.dump(glossbert_dataset, wbf)
-    elif target == 'semeval2015':
-        glossbert_dataset = GlossBERTDataset_for_Sentence.from_data_csv(
-            csv_paths['semeval2015'], tokenizer, max_seq_length=args.max_seq_length)
-        with open('../Evaluation_Datasets/semeval2015/semval2015_glossbert_dataset.pkl', 'wb') as wbf:
+    elif target == '2015':
+        glossbert_dataset = GlossBERTDataset_for_CGPair_Feature.from_data_csv(
+            csv_paths['2015'], tokenizer, max_seq_length=args.max_seq_length)
+        with open('../Evaluation_Datasets/senseval2015/senseval2015_glossbert_dataset.pkl', 'wb') as wbf:
             pickle.dump(glossbert_dataset, wbf)
-    elif target == 'semeval2':
-        glossbert_dataset = GlossBERTDataset_for_Sentence.from_data_csv(
-            csv_paths['semeval2'], tokenizer, max_seq_length=args.max_seq_length)
-        with open('../Evaluation_Datasets/semeval2/semval2_glossbert_dataset.pkl', 'wb') as wbf:
+    elif target == '2':
+        glossbert_dataset = GlossBERTDataset_for_CGPair_Feature.from_data_csv(
+            csv_paths['2'], tokenizer, max_seq_length=args.max_seq_length)
+        with open('../Evaluation_Datasets/senseval2/senseval2_glossbert_dataset.pkl', 'wb') as wbf:
             pickle.dump(glossbert_dataset, wbf)
-    elif target == 'semeval3':
-        glossbert_dataset = GlossBERTDataset_for_Sentence.from_data_csv(
-            csv_paths['semeval3'], tokenizer, max_seq_length=args.max_seq_length)
-        with open('../Evaluation_Datasets/semeval3/semval3_glossbert_dataset.pkl', 'wb') as wbf:
+    elif target == '3':
+        glossbert_dataset = GlossBERTDataset_for_CGPair_Feature.from_data_csv(
+            csv_paths['3'], tokenizer, max_seq_length=args.max_seq_length)
+        with open('../Evaluation_Datasets/senseval3/senseval3_glossbert_dataset.pkl', 'wb') as wbf:
+            pickle.dump(glossbert_dataset, wbf)
+    elif target == 'ALL':
+        glossbert_dataset = GlossBERTDataset_for_CGPair_Feature.from_data_csv(
+            csv_paths['ALL'], tokenizer, max_seq_length=args.max_seq_length)
+        with open('../Evaluation_Datasets/ALL/ALL_glossbert_dataset.pkl', 'wb') as wbf:
             pickle.dump(glossbert_dataset, wbf)
