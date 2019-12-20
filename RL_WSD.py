@@ -38,7 +38,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     ## Required parameters
     parser.add_argument("--mode",
-                        default='bert-pretrain',
+                        default='eval-baseline',
                         type=str,
                         choices=["bert-pretrain", "eval-baseline"],
                         help="The mode to run.")
@@ -184,9 +184,9 @@ def bert_pretrain(model, dataset):
             input_id1s_tensor = torch.tensor(input_ids1, dtype=torch.long, device=device)
             input_mask1_tensor = torch.tensor(input_mask1, dtype=torch.long, device=device)
             segment_ids1_tensor = torch.tensor(segment_ids1, dtype=torch.long, device=device)
-            input_id2s_tensor = torch.tensor(input_ids1, dtype=torch.long, device=device)
-            input_mask2_tensor = torch.tensor(input_mask1, dtype=torch.long, device=device)
-            segment_ids2_tensor = torch.tensor(segment_ids1, dtype=torch.long, device=device)
+            input_id2s_tensor = torch.tensor(input_ids2, dtype=torch.long, device=device)
+            input_mask2_tensor = torch.tensor(input_mask2, dtype=torch.long, device=device)
+            segment_ids2_tensor = torch.tensor(segment_ids2, dtype=torch.long, device=device)
             label_tensor = torch.tensor(label, dtype=torch.long, device=device)
 
             batch_size, seq_len = input_id1s_tensor.size()
@@ -236,9 +236,9 @@ def eval_baseline(model, dataset):
         input_id1s_tensor = torch.tensor(input_ids1, dtype=torch.long, device=device)
         input_mask1_tensor = torch.tensor(input_mask1, dtype=torch.long, device=device)
         segment_ids1_tensor = torch.tensor(segment_ids1, dtype=torch.long, device=device)
-        input_id2s_tensor = torch.tensor(input_ids1, dtype=torch.long, device=device)
-        input_mask2_tensor = torch.tensor(input_mask1, dtype=torch.long, device=device)
-        segment_ids2_tensor = torch.tensor(segment_ids1, dtype=torch.long, device=device)
+        input_id2s_tensor = torch.tensor(input_ids2, dtype=torch.long, device=device)
+        input_mask2_tensor = torch.tensor(input_mask2, dtype=torch.long, device=device)
+        segment_ids2_tensor = torch.tensor(segment_ids2, dtype=torch.long, device=device)
         label_tensor = torch.tensor(label, dtype=torch.long, device=device)
 
         batch_size, seq_len = input_id1s_tensor.size()
@@ -255,7 +255,7 @@ def eval_baseline(model, dataset):
 
         pred = logits.argmax(dim=1).tolist()
         probs = F.softmax(logits, dim=-1)
-        result_batch = [(pred[i], probs[i][0].item(), probs[i][1].item()) for i in range(args.eval_batch_size)]
+        result_batch = [(pred[i], probs[i][0].item(), probs[i][1].item()) for i in range(logits.size(0))]
         for result in result_batch:
             wf.write(str(result[0])+' '+str(result[1])+' '+str(result[2])+'\n')
     wf.close()
@@ -301,7 +301,7 @@ if __name__ == '__main__':
         #with open('Evaluation_Datasets/semeval2007/semval2007_glossbert_dataset.pkl', 'rb') as rbf:
             #glossbert_dataset = pickle.load(rbf)
         # Load open-source bert
-        bert_model = BertModel.from_pretrained('.cache')
+        bert_model = BertModel.from_pretrained('bert-model')
         model = BaseModel(bert_model).to(device)
-        model.load_state_dict(torch.load(args.checkpoint))
+        model.load_state_dict(torch.load(args.checkpoint, map_location=torch.device('cpu')))
         eval_baseline(model, glossbert_dataset)
