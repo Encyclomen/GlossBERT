@@ -159,7 +159,7 @@ def bert_pretrain(model, dataset):
     logger.info("  Batch size = %d", args.train_batch_size)
     logger.info("  Num steps = %d", num_train_optimization_steps)
     # Assign loss function
-    loss_function = torch.nn.CrossEntropyLoss(weight=torch.tensor([100/19, 10/19], dtype=torch.float, device=device), ignore_index=-1)
+    loss_function = torch.nn.CrossEntropyLoss(weight=torch.tensor([10/19, 100/19], dtype=torch.float, device=device), ignore_index=-1)
     # Prepare optimizer
     param_optimizer = list(model.named_parameters())
     no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
