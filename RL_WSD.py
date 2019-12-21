@@ -298,7 +298,7 @@ if __name__ == '__main__':
         bert_pretrain(model, glossbert_dataset)
     elif args.mode == 'eval-baseline':
         glossbert_dataset = GlossBERTDataset_for_CGPair_Feature.from_data_csv(
-            'Evaluation_Datasets/semeval2007/semeval2007_test_token_cls.csv', tokenizer, max_seq_length=90)#args.max_seq_length)
+            'Evaluation_Datasets/semeval2007/semeval2007_test_token_cls.csv', tokenizer, max_seq_length=args.max_seq_length)
         #with open('Evaluation_Datasets/semeval2007/semval2007_glossbert_dataset.pkl', 'rb') as rbf:
             #glossbert_dataset = pickle.load(rbf)
         print("  Num positive examples = %d", len(glossbert_dataset.pos_indexes))
