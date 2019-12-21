@@ -21,9 +21,10 @@ class BaseModel(nn.Module):
                                                                                 self.bert_config.hidden_size)
         bert_hiddens1, _ = self.bert_model(input_id1s_tensor, token_type_ids=segment_ids1_tensor,
                         attention_mask=input_mask1_tensor, output_all_encoded_layers=False)
-
         hiddens_selected = torch.where((real_selection_mask_tensor==1), bert_hiddens1, torch.zeros_like(bert_hiddens1))
+        # The scaling factor is used to obtain the mean hiddens states of target word that contains more than 1 token.
         scaling_factor_tensor = selection_mask_tensor.sum(1).unsqueeze(-1)
+        # Restrict the scaling factor >= 1 to avoid x/0 in case of invalid inputs
         scaling_factor_tensor = torch.where(scaling_factor_tensor >= 1, scaling_factor_tensor, torch.ones_like(scaling_factor_tensor))
         final_target_hidden_batch = (hiddens_selected.sum(1))/scaling_factor_tensor
 

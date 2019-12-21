@@ -9,24 +9,28 @@ def main():
     parser.add_argument("--dataset",
                         default=None,
                         type=str,
-                        required=True,
+                        #required=True,
                         choices=['senseval2', 'senseval3', 'semeval2007', 'semeval2013', 'semeval2015', 'ALL'],
                         help="Dataset name")
     parser.add_argument("--input_file",
                         default=None,
                         type=str,
-                        required=True,
+                        #required=True,
                         help="Input file of results")
     parser.add_argument("--output_dir",
-                        default=None,
+                        default='results',
                         type=str,
-                        required=True,
                         help="Output dir of final results")
     args = parser.parse_args()
 
     dataset = args.dataset
     input_file_name = args.input_file
     output_dir = args.output_dir
+
+    dataset = 'semeval2007'
+    input_file_name = 'output/eval_log (2).txt'
+    output_dir = 'results'
+
     train_file_name = './Evaluation_Datasets/'+dataset+'/'+dataset+'.csv'
     train_data = pd.read_csv(train_file_name,sep="\t",na_filter=False).values
     words_train = []

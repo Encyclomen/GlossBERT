@@ -9,18 +9,15 @@ def main():
     parser.add_argument("--dataset",
                         default=None,
                         type=str,
-                        required=True,
                         choices=['senseval2', 'senseval3', 'semeval2007', 'semeval2013', 'semeval2015', 'ALL'],
                         help="Dataset name")
     parser.add_argument("--input_file",
                         default=None,
                         type=str,
-                        required=True,
                         help="Input file of results")
     parser.add_argument("--output_dir",
                         default=None,
                         type=str,
-                        required=True,
                         help="Output dir of final results")
     args = parser.parse_args()
 

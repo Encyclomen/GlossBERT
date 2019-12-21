@@ -137,7 +137,7 @@ def parse_args():
                              "0 (default value): dynamic loss scaling.\n"
                              "Positive power of 2: static loss scaling value.\n")
     parser.add_argument("--checkpoint",
-                        default='output/1_pytorch_model.bin',
+                        default='output/0_pytorch_model.bin',
                         type=str,
                         help="The saved checkpoint model path to load.")
     args = parser.parse_args()
@@ -201,7 +201,7 @@ def bert_pretrain(model, dataset):
             if args.gradient_accumulation_steps > 1:
                 loss = loss / args.gradient_accumulation_steps
             loss.backward()
-            tr_loss += loss.item()
+            tr_loss += loss.item() * args.gradient_accumulation_steps
 
             if (step % args.gradient_accumulation_steps) == 0:
                 optimizer.step()
@@ -243,7 +243,7 @@ def eval_baseline(model, dataset):
 
         batch_size, seq_len = input_id1s_tensor.size()
         # The mask has 1 for real target
-        selection_mask_tensor = torch.zeros(batch_size, seq_len, device=device)
+        selection_mask_tensor = torch.zeros(batch_size, seq_len, device=device, dtype=torch.long)
         for i in range(batch_size):
             selection_mask_tensor[i][start_id[i]:end_id[i]] = 1
 
@@ -255,7 +255,7 @@ def eval_baseline(model, dataset):
 
         pred = logits.argmax(dim=1).tolist()
         probs = F.softmax(logits, dim=-1)
-        result_batch = [(pred[i], probs[i][0].item(), probs[i][1].item()) for i in range(logits.size(0))]
+        result_batch = [(pred[i], probs[i][0].item(), probs[i][1].item()) for i in range(batch_size)]
         for result in result_batch:
             wf.write(str(result[0])+' '+str(result[1])+' '+str(result[2])+'\n')
     wf.close()
