@@ -159,7 +159,7 @@ def bert_pretrain(model, dataset):
     logger.info("  Batch size = %d", args.train_batch_size)
     logger.info("  Num steps = %d", num_train_optimization_steps)
     # Assign loss function
-    loss_function = torch.nn.CrossEntropyLoss(weight=torch.tensor([10/19, 100/19], dtype=torch.float, device=device), ignore_index=-1)
+    loss_function = torch.nn.CrossEntropyLoss(weight=torch.tensor([10/17, 80/17], dtype=torch.float, device=device), ignore_index=-1)
     # Prepare optimizer
     param_optimizer = list(model.named_parameters())
     no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
@@ -279,14 +279,14 @@ if __name__ == '__main__':
 
     tokenizer = BertTokenizer.from_pretrained('bert-model', do_lower_case=True)
     if args.mode == 'bert-pretrain':
-        print('Loading glossbert dataset ...')
+        print('Loading glossbert dataset from csv file...')
         glossbert_dataset = GlossBERTDataset_for_CGPair_Feature.from_data_csv(
             'Training_Corpora/SemCor/semcor_train_token_cls.csv', tokenizer, max_seq_length=args.max_seq_length)
             # 'Evaluation_Datasets/semeval2007/semeval2007_test_token_cls.csv', tokenizer, max_seq_length=args.max_seq_length)
             # 'Training_Corpora/SemCor/semcor_train_token_cls.csv', tokenizer, max_seq_length=args.max_seq_length)
         #with open('Training_Corpora/SemCor/train_glossbert_dataset.pkl', 'wb') as wbf:
             #pickle.dump(glossbert_dataset, wbf)
-        #print('Loading glossbert dataset ...')
+        #print('Loading glossbert dataset from pkl file...')
         #with open('Training_Corpora/SemCor/train_glossbert_dataset.pkl', 'rb') as rbf:
             #glossbert_dataset = pickle.load(rbf)
         print("  Num positive examples = %d", len(glossbert_dataset.pos_indexes))
