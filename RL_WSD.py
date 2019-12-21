@@ -92,7 +92,7 @@ def parse_args():
                         type=int,
                         help="Total batch size for training.")
     parser.add_argument("--neg_pos_ratio",
-                        default=1,
+                        default=None,
                         type=float,
                         help="Ratio of negative training examples over positive ones.")
     parser.add_argument("--eval_batch_size",
@@ -100,7 +100,7 @@ def parse_args():
                         type=int,
                         help="Total batch size for eval.")
     parser.add_argument("--learning_rate",
-                        default=5e-5,
+                        default=2e-5,
                         type=float,
                         help="The initial learning rate for Adam.")
     parser.add_argument("--num_train_epochs",
@@ -137,7 +137,7 @@ def parse_args():
                              "0 (default value): dynamic loss scaling.\n"
                              "Positive power of 2: static loss scaling value.\n")
     parser.add_argument("--checkpoint",
-                        default='output/0_pytorch_model.bin',
+                        default='output/2_pytorch_model.bin',
                         type=str,
                         help="The saved checkpoint model path to load.")
     args = parser.parse_args()
@@ -159,7 +159,7 @@ def bert_pretrain(model, dataset):
     logger.info("  Batch size = %d", args.train_batch_size)
     logger.info("  Num steps = %d", num_train_optimization_steps)
     # Assign loss function
-    loss_function = torch.nn.CrossEntropyLoss(ignore_index=-1)
+    loss_function = torch.nn.CrossEntropyLoss(weight=torch.tensor([100/19, 10/19], dtype=torch.float, device=device), ignore_index=-1)
     # Prepare optimizer
     param_optimizer = list(model.named_parameters())
     no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
@@ -223,8 +223,7 @@ def eval_baseline(model, dataset):
 
     sampler = SequentialSampler(dataset)
     eval_dataloader = DataLoader(dataset, sampler=sampler, batch_size=args.eval_batch_size, collate_fn=lambda x: zip(*x))
-    loss_function = torch.nn.CrossEntropyLoss(ignore_index=-1)
-    observe_interval = 100
+    loss_function = torch.nn.CrossEntropyLoss(ignore_index=-1, reduction='sum')
 
     wf = open('output/eval_log.txt', 'w')
     tr_loss = 0
@@ -259,8 +258,7 @@ def eval_baseline(model, dataset):
         for result in result_batch:
             wf.write(str(result[0])+' '+str(result[1])+' '+str(result[2])+'\n')
     wf.close()
-    print('Avg_loss: %.4f' % (tr_loss / observe_interval))
-
+    print('Avg_loss: %.4f' % (tr_loss / len(dataset)))
 
 
 if __name__ == '__main__':
@@ -281,25 +279,31 @@ if __name__ == '__main__':
 
     tokenizer = BertTokenizer.from_pretrained('bert-model', do_lower_case=True)
     if args.mode == 'bert-pretrain':
-
+        print('Loading glossbert dataset ...')
         glossbert_dataset = GlossBERTDataset_for_CGPair_Feature.from_data_csv(
             'Training_Corpora/SemCor/semcor_train_token_cls.csv', tokenizer, max_seq_length=args.max_seq_length)
             # 'Evaluation_Datasets/semeval2007/semeval2007_test_token_cls.csv', tokenizer, max_seq_length=args.max_seq_length)
             # 'Training_Corpora/SemCor/semcor_train_token_cls.csv', tokenizer, max_seq_length=args.max_seq_length)
         #with open('Training_Corpora/SemCor/train_glossbert_dataset.pkl', 'wb') as wbf:
             #pickle.dump(glossbert_dataset, wbf)
-        print('Loading glossbert dataset ...')
+        #print('Loading glossbert dataset ...')
         #with open('Training_Corpora/SemCor/train_glossbert_dataset.pkl', 'rb') as rbf:
             #glossbert_dataset = pickle.load(rbf)
+        print("  Num positive examples = %d", len(glossbert_dataset.pos_indexes))
+        print("  Num negative examples = %d", len(glossbert_dataset.neg_indexes))
+        print("  Num invalid examples = %d", len(glossbert_dataset.invalid_indexes))
         # Load open-source bert
         bert_model = BertModel.from_pretrained('bert-model')
         model = BaseModel(bert_model).to(device)
         bert_pretrain(model, glossbert_dataset)
     elif args.mode == 'eval-baseline':
         glossbert_dataset = GlossBERTDataset_for_CGPair_Feature.from_data_csv(
-            'Evaluation_Datasets/semeval2007/semeval2007_test_token_cls.csv', tokenizer, max_seq_length=args.max_seq_length)
+            'Evaluation_Datasets/semeval2013/semeval2013_test_token_cls.csv', tokenizer, max_seq_length=90)#args.max_seq_length)
         #with open('Evaluation_Datasets/semeval2007/semval2007_glossbert_dataset.pkl', 'rb') as rbf:
             #glossbert_dataset = pickle.load(rbf)
+        print("  Num positive examples = %d", len(glossbert_dataset.pos_indexes))
+        print("  Num negative examples = %d", len(glossbert_dataset.neg_indexes))
+        print("  Num invalid examples = %d", len(glossbert_dataset.invalid_indexes))
         # Load open-source bert
         bert_model = BertModel.from_pretrained('bert-model')
         model = BaseModel(bert_model).to(device)

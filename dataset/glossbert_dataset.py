@@ -109,7 +109,7 @@ class GlossBERTDataset_for_CGPair_Feature(GlossBERTDataset):
         self.pos_indexes = []
         self.neg_indexes = []
         self.all_examples = []
-        self.num_invalid_indexes = []
+        self.invalid_indexes = []
         for sentence in tqdm(self._sentences, desc="Sentence Iteration"):
             for instance in sentence:
                 for idx, cand_sense in enumerate(instance, start=0):
@@ -129,7 +129,7 @@ class GlossBERTDataset_for_CGPair_Feature(GlossBERTDataset):
                         self.neg_indexes.append(len(self.all_examples))
                         #self.negative_examples.append(cur_example)
                     else:  # label == -1
-                        self.num_invalid_indexes.append(len(self.all_examples))
+                        self.invalid_indexes.append(len(self.all_examples))
                     self.all_examples.append(cur_example)
 
         self.all_features = []
