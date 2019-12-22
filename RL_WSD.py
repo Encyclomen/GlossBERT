@@ -285,8 +285,9 @@ if __name__ == '__main__':
             'Training_Corpora/SemCor/semcor_train_token_cls.csv', tokenizer, max_seq_length=args.max_seq_length)
             # 'Evaluation_Datasets/semeval2007/semeval2007_test_token_cls.csv', tokenizer, max_seq_length=args.max_seq_length)
             # 'Training_Corpora/SemCor/semcor_train_token_cls.csv', tokenizer, max_seq_length=args.max_seq_length)
-        #with open('Training_Corpora/SemCor/train_glossbert_dataset.pkl', 'wb') as wbf:
-            #pickle.dump(glossbert_dataset, wbf)
+        print('Dumping glossbert dataset ...')
+        with open('Training_Corpora/SemCor/train_glossbert_dataset.pkl', 'wb') as wbf:
+            pickle.dump(glossbert_dataset, wbf)
         #print('Loading glossbert dataset from pkl file...')
         #with open('Training_Corpora/SemCor/train_glossbert_dataset.pkl', 'rb') as rbf:
             #glossbert_dataset = pickle.load(rbf)
