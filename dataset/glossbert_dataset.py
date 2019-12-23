@@ -10,7 +10,7 @@ from tqdm import tqdm
 
 from model.definition import *
 from tokenization import BertTokenizer
-from utils.dataset_prepare_utils import convert_example_to_features
+from utils.dataset_prepare_utils import convert_example_to_features, convert_example_to_features2
 
 logger = logging.getLogger(__name__)
 
@@ -134,7 +134,7 @@ class GlossBERTDataset_for_CGPair_Feature(GlossBERTDataset):
 
         self.all_features = []
         for example in tqdm(self.all_examples, desc="Training Example Iteration"):
-            feature = convert_example_to_features(example, self.max_seq_length, tokenizer)
+            feature = convert_example_to_features2(example, self.max_seq_length, tokenizer)
             self.all_features.append(feature)
 
     def __getitem__(self, item):

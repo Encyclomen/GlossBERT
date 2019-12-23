@@ -179,8 +179,7 @@ def bert_pretrain(model, dataset):
         wf = open(('output/log_%d.txt' % epoch), 'w')
         tr_loss = 0
         for step, batch in enumerate(tqdm(bert_pretrain_dataloader, desc="Iteration"), start=1):
-            guid, cand_sense_key, input_ids, input_mask, segment_ids, \
-            start_id, end_id, label = batch
+            guid, cand_sense_key, input_ids, input_mask, segment_ids, start_id, end_id, label = batch
 
             input_ids_tensor = torch.tensor(input_ids, dtype=torch.long, device=device)
             input_mask_tensor = torch.tensor(input_mask, dtype=torch.long, device=device)
@@ -225,34 +224,39 @@ def eval_baseline(model, dataset):
 
     wf = open('output/eval_log.txt', 'w')
     tr_loss = 0
+    total_num_correct_pred = 0
+    total_num_example = 0
     for step, batch in enumerate(tqdm(eval_dataloader, desc="Iteration"), start=1):
-        guid, cand_sense_key, input_ids1, input_mask1, segment_ids1, \
-        input_ids2, input_mask2, segment_ids2, \
-        start_id, end_id, label = batch
+        guid, cand_sense_key, input_ids, input_mask, segment_ids, start_id, end_id, label = batch
 
-        input_id1s_tensor = torch.tensor(input_ids1, dtype=torch.long, device=device)
-        input_mask1_tensor = torch.tensor(input_mask1, dtype=torch.long, device=device)
-        segment_ids1_tensor = torch.tensor(segment_ids1, dtype=torch.long, device=device)
+        input_ids_tensor = torch.tensor(input_ids, dtype=torch.long, device=device)
+        input_mask_tensor = torch.tensor(input_mask, dtype=torch.long, device=device)
+        segment_ids_tensor = torch.tensor(segment_ids, dtype=torch.long, device=device)
         label_tensor = torch.tensor(label, dtype=torch.long, device=device)
 
-        batch_size, seq_len = input_id1s_tensor.size()
+        batch_size, seq_len = input_ids_tensor.size()
         # The mask has 1 for real target
         selection_mask_tensor = torch.zeros(batch_size, seq_len, device=device, dtype=torch.long)
         for i in range(batch_size):
             selection_mask_tensor[i][start_id[i]:end_id[i]] = 1
 
         with torch.no_grad():
-            logits = model(input_id1s_tensor, input_mask1_tensor, segment_ids1_tensor, selection_mask_tensor)
+            logits = model(input_ids_tensor, input_mask_tensor, segment_ids_tensor, selection_mask_tensor)
         loss = loss_function(logits, label_tensor)
         tr_loss += loss.item()
 
-        pred = logits.argmax(dim=1).tolist()
+        pred_tensor = logits.argmax(dim=1)
+        total_num_correct_pred += (pred_tensor==label_tensor).sum().item()
+        total_num_example += batch_size
+
+        pred_list = pred_tensor.tolist()
         probs = F.softmax(logits, dim=-1)
-        result_batch = [(pred[i], probs[i][0].item(), probs[i][1].item()) for i in range(batch_size)]
+        result_batch = [(pred_list[i], probs[i][0].item(), probs[i][1].item()) for i in range(batch_size)]
         for result in result_batch:
             wf.write(str(result[0])+' '+str(result[1])+' '+str(result[2])+'\n')
     wf.close()
     print('Avg_loss: %.4f' % (tr_loss / len(dataset)))
+    print('Label accuracy: %.2f' % (total_num_correct_pred/total_num_example))
 
 
 if __name__ == '__main__':
@@ -302,5 +306,5 @@ if __name__ == '__main__':
         # Load open-source bert
         bert_model = BertModel.from_pretrained('bert-model')
         model = BaseModel(bert_model).to(device)
-        model.load_state_dict(torch.load(args.checkpoint, map_location=torch.device('cpu')))
+        #model.load_state_dict(torch.load(args.checkpoint, map_location=torch.device('cpu')))
         eval_baseline(model, glossbert_dataset)
