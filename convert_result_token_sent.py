@@ -28,7 +28,7 @@ def main():
     output_dir = args.output_dir
 
     dataset = 'semeval2007'
-    input_file_name = 'output/eval_log (3).txt'
+    input_file_name = 'output/results_3.txt'
     output_dir = 'results'
 
     train_file_name = './Evaluation_Datasets/'+dataset+'/'+dataset+'.csv'

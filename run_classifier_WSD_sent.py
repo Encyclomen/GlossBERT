@@ -452,8 +452,6 @@ def main():
                              warmup=args.warmup_proportion,
                              t_total=num_train_optimization_steps)
 
-
-
     # load data
     if args.do_train:
         train_features = convert_examples_to_features(
@@ -497,9 +495,6 @@ def main():
 
         eval_data = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids)
         eval_dataloader = DataLoader(eval_data, batch_size=args.eval_batch_size, shuffle=False)
-
-
-
 
     # train
     global_step = 0

@@ -26,7 +26,7 @@ from dataset.sampler import NegDownSampler
 from file_utils import PYTORCH_PRETRAINED_BERT_CACHE, WEIGHTS_NAME, CONFIG_NAME
 from model.definition import InputExample, InputFeatures
 from model.modeling import *
-from model.base_model import BaseModel2 as BaseModel
+from model.base_model import BaseModel
 from tokenization import BertTokenizer
 from optimization import BertAdam, warmup_linear
 from dataset.glossbert_dataset import *
@@ -146,7 +146,6 @@ def parse_args():
 
 
 def bert_pretrain(model, dataset):
-    model.train()
     #sampler = SequentialSampler(dataset)
     #sampler = RandomSampler(glossbert_dataset)
     sampler = NegDownSampler(dataset, neg_pos_ratio=args.neg_pos_ratio)
@@ -179,22 +178,26 @@ def bert_pretrain(model, dataset):
         wf = open(('output/log_%d.txt' % epoch), 'w')
         tr_loss = 0
         for step, batch in enumerate(tqdm(bert_pretrain_dataloader, desc="Iteration"), start=1):
-            guid, cand_sense_key, input_ids, input_mask, segment_ids, \
+            guid, cand_sense_key, input_ids1, input_mask1, segment_ids1, \
+            input_ids2, input_mask2, segment_ids2, \
             start_id, end_id, label = batch
 
-            input_ids_tensor = torch.tensor(input_ids, dtype=torch.long, device=device)
-            input_mask_tensor = torch.tensor(input_mask, dtype=torch.long, device=device)
-            segment_ids_tensor = torch.tensor(segment_ids, dtype=torch.long, device=device)
-
+            input_id1s_tensor = torch.tensor(input_ids1, dtype=torch.long, device=device)
+            input_mask1_tensor = torch.tensor(input_mask1, dtype=torch.long, device=device)
+            segment_ids1_tensor = torch.tensor(segment_ids1, dtype=torch.long, device=device)
+            input_id2s_tensor = torch.tensor(input_ids2, dtype=torch.long, device=device)
+            input_mask2_tensor = torch.tensor(input_mask2, dtype=torch.long, device=device)
+            segment_ids2_tensor = torch.tensor(segment_ids2, dtype=torch.long, device=device)
             label_tensor = torch.tensor(label, dtype=torch.long, device=device)
 
-            batch_size, seq_len = input_ids_tensor.size()
+            batch_size, seq_len = input_id1s_tensor.size()
             # The mask has 1 for real target
             selection_mask_tensor = torch.zeros(batch_size, seq_len, device=device)
             for i in range(batch_size):
                 selection_mask_tensor[i][start_id[i]:end_id[i]] = 1
 
-            logits = model(input_ids_tensor, input_mask_tensor, segment_ids_tensor, selection_mask_tensor)
+            logits = model(input_id1s_tensor, input_mask1_tensor, segment_ids1_tensor, selection_mask_tensor,
+                           input_id2s_tensor, input_mask2_tensor, segment_ids2_tensor)
             loss = loss_function(logits, label_tensor)
             if args.gradient_accumulation_steps > 1:
                 loss = loss / args.gradient_accumulation_steps
@@ -233,6 +236,9 @@ def eval_baseline(model, dataset):
         input_id1s_tensor = torch.tensor(input_ids1, dtype=torch.long, device=device)
         input_mask1_tensor = torch.tensor(input_mask1, dtype=torch.long, device=device)
         segment_ids1_tensor = torch.tensor(segment_ids1, dtype=torch.long, device=device)
+        input_id2s_tensor = torch.tensor(input_ids2, dtype=torch.long, device=device)
+        input_mask2_tensor = torch.tensor(input_mask2, dtype=torch.long, device=device)
+        segment_ids2_tensor = torch.tensor(segment_ids2, dtype=torch.long, device=device)
         label_tensor = torch.tensor(label, dtype=torch.long, device=device)
 
         batch_size, seq_len = input_id1s_tensor.size()
@@ -242,7 +248,8 @@ def eval_baseline(model, dataset):
             selection_mask_tensor[i][start_id[i]:end_id[i]] = 1
 
         with torch.no_grad():
-            logits = model(input_id1s_tensor, input_mask1_tensor, segment_ids1_tensor, selection_mask_tensor)
+            logits = model(input_id1s_tensor, input_mask1_tensor, segment_ids1_tensor, selection_mask_tensor,
+                           input_id2s_tensor, input_mask2_tensor, segment_ids2_tensor)
         loss = loss_function(logits, label_tensor)
         tr_loss += loss.item()
 

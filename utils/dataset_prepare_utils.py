@@ -107,6 +107,56 @@ def convert_single_example_to_features(ori_tokens, max_seq_length, tokenizer):
   return features
 
 
+def convert_pair_example_to_features(ori_tokens_a, ori_tokens_b, max_seq_length, tokenizer, mask_prob=0):
+    # Modifies `tokens_a` and `tokens_b` in place so that the total
+    # length is less than the specified length.
+    # Account for [CLS], [SEP], [SEP] with "- 3"
+    _truncate_seq_pair(ori_tokens_a, ori_tokens_b, max_seq_length - 3)
+
+    tokens_a, t1_label = random_word(ori_tokens_a, tokenizer, mask_prob=mask_prob)
+    tokens_b, t2_label = random_word(ori_tokens_b, tokenizer, mask_prob=mask_prob)
+    # concatenate lm labels and account for CLS, SEP, SEP
+    # lm_label_ids = ([-1] + t1_label + [-1] + t2_label + [-1])
+
+    tokens = []
+    segment_ids = []
+    tokens.append("[CLS]")
+    segment_ids.append(0)
+    for token in tokens_a:
+        tokens.append(token)
+        segment_ids.append(0)
+    tokens.append("[SEP]")
+    segment_ids.append(0)
+
+    assert len(tokens_b) > 0
+    for token in tokens_b:
+        tokens.append(token)
+        segment_ids.append(1)
+    tokens.append("[SEP]")
+    segment_ids.append(1)
+
+    input_ids = tokenizer.convert_tokens_to_ids(tokens)
+
+    # The mask has 1 for real tokens and 0 for padding tokens. Only real
+    # tokens are attended to.
+    input_mask = [1] * len(input_ids)
+
+    # Zero-pad up to the sequence length.
+    while len(input_ids) < max_seq_length:
+        input_ids.append(0)
+        input_mask.append(0)
+        segment_ids.append(0)
+        # lm_label_ids.append(-1)
+
+    assert len(input_ids) == max_seq_length
+    assert len(input_mask) == max_seq_length
+    assert len(segment_ids) == max_seq_length
+    # assert len(lm_label_ids) == max_seq_length
+
+    features = (input_ids, input_mask, segment_ids)
+    return features
+
+
 def convert_example_to_features(example, max_seq_length, tokenizer):
     guid = example.guid
     cand_sense_key = example.cand_sense_key
@@ -121,7 +171,23 @@ def convert_example_to_features(example, max_seq_length, tokenizer):
     input_ids1, input_mask1, segment_ids1 = convert_single_example_to_features(tokens_a, max_seq_length, tokenizer)
     input_ids2, input_mask2, segment_ids2 = convert_single_example_to_features(tokens_b, max_seq_length, tokenizer)
 
-    return (guid, cand_sense_key, input_ids1, input_mask1, segment_ids1, input_ids2, input_mask2, segment_ids2, start_id, end_id, label)
+    return guid, cand_sense_key, input_ids1, input_mask1, segment_ids1, input_ids2, input_mask2, segment_ids2, start_id, end_id, label
+
+
+def convert_example_to_features2(example, max_seq_length, tokenizer, mask_prob=0):
+    guid = example.guid
+    cand_sense_key = example.cand_sense_key
+    text_a = example.text_a
+    text_b = example.text_b
+    label = example.label
+    start_id = example.start_id
+    end_id = example.end_id
+    tokens_a = tokenizer.tokenize(text_a)
+    tokens_b = tokenizer.tokenize(text_b)
+
+    input_ids, input_mask, segment_ids = convert_pair_example_to_features(tokens_a, tokens_b, max_seq_length, tokenizer, mask_prob=mask_prob)
+
+    return guid, cand_sense_key, input_ids, input_mask, segment_ids, start_id, end_id, label
 
 
 def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer, output_mode='classification'):
