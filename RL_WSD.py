@@ -306,5 +306,5 @@ if __name__ == '__main__':
         # Load open-source bert
         bert_model = BertModel.from_pretrained('bert-model')
         model = BaseModel(bert_model).to(device)
-        #model.load_state_dict(torch.load(args.checkpoint, map_location=torch.device('cpu')))
+        model.load_state_dict(torch.load(args.checkpoint, map_location=torch.device('cpu')))
         eval_baseline(model, glossbert_dataset)

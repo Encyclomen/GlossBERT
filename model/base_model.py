@@ -48,8 +48,7 @@ class BaseModel2(nn.Module):
         #self.gloss_lstm = LSTM(input_size=hidden_size, hidden_size=hidden_size, bidirectional=True)
 
     def forward(self, input_id1s_tensor, input_mask1_tensor, segment_ids1_tensor, selection_mask_tensor):
-        real_selection_mask_tensor = selection_mask_tensor.unsqueeze(-1).expand(-1, -1,
-                                                                                self.bert_config.hidden_size)
+        real_selection_mask_tensor = selection_mask_tensor.unsqueeze(-1).expand(-1, -1, self.bert_config.hidden_size)
         bert_hiddens1, _ = self.bert_model(input_id1s_tensor, token_type_ids=segment_ids1_tensor,
                         attention_mask=input_mask1_tensor, output_all_encoded_layers=False)
         hiddens_selected = torch.where((real_selection_mask_tensor==1), bert_hiddens1, torch.zeros_like(bert_hiddens1))
