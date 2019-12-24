@@ -1,7 +1,4 @@
 # coding=utf-8
-
-"""BERT finetuning runner."""
-
 from __future__ import absolute_import, division, print_function
 
 import argparse
@@ -68,21 +65,12 @@ def parse_args():
                         default="",
                         type=str,
                         help="Where do you want to store the pre-trained models downloaded from s3")
-    parser.add_argument("--do_train",
-                        action='store_true',
-                        help="Whether to run training.")
-    parser.add_argument("--do_eval",
-                        action='store_true',
-                        help="Whether to run eval on the dev set.")
-    parser.add_argument("--do_test",
-                        action='store_true',
-                        help="Whether to run test on the test set.")
     parser.add_argument("--do_lower_case",
                         default=False,
                         action='store_true',
                         help="Whether to lower case the input text. True for uncased models, False for cased models.")
     parser.add_argument("--max_seq_length",
-                        default=128,
+                        default=150,
                         type=int,
                         help="The maximum total input sequence length after WordPiece tokenization. \n"
                              "Sequences longer than this will be truncated, and sequences shorter \n"
@@ -140,6 +128,10 @@ def parse_args():
                         default='output/2_pytorch_model.bin',
                         type=str,
                         help="The saved checkpoint model path to load.")
+    parser.add_argument("--eval_dataset",
+                        default='dev',
+                        type=str,
+                        help="The saved checkpoint model path to load.")
     args = parser.parse_args()
 
     return args
@@ -176,7 +168,7 @@ def bert_pretrain(model, dataset):
 
     for epoch in trange(int(args.num_train_epochs), desc="Epoch"):
         sampler.refresh_sampler()
-        wf = open(('output/log_%d.txt' % epoch), 'w')
+        wf = open(os.path.join(args.output_dir, 'log_%d.txt' % epoch), 'w')
         tr_loss = 0
         for step, batch in enumerate(tqdm(bert_pretrain_dataloader, desc="Iteration"), start=1):
             guid, cand_sense_key, input_ids, input_mask, segment_ids, start_id, end_id, label = batch
@@ -222,7 +214,7 @@ def eval_baseline(model, dataset):
     eval_dataloader = DataLoader(dataset, sampler=sampler, batch_size=args.eval_batch_size, collate_fn=lambda x: zip(*x))
     loss_function = torch.nn.CrossEntropyLoss(ignore_index=-1, reduction='sum')
 
-    wf = open('output/eval_log.txt', 'w')
+    wf = open(os.path.join(args.output_dir, 'eval_log.txt'), 'w')
     tr_loss = 0
     total_num_correct_pred = 0
     total_num_example = 0
@@ -279,7 +271,7 @@ if __name__ == '__main__':
     if args.mode == 'bert-pretrain':
         print('Loading glossbert dataset from csv file...')
         glossbert_dataset = GlossBERTDataset_for_CGPair_Feature.from_data_csv(
-            'Training_Corpora/SemCor/semcor_train_token_cls.csv', tokenizer, max_seq_length=args.max_seq_length)
+            csv_paths['train'], tokenizer, max_seq_length=args.max_seq_length)
             # 'Evaluation_Datasets/semeval2007/semeval2007_test_token_cls.csv', tokenizer, max_seq_length=args.max_seq_length)
             # 'Training_Corpora/SemCor/semcor_train_token_cls.csv', tokenizer, max_seq_length=args.max_seq_length)
         print('Dumping glossbert dataset ...')
@@ -292,19 +284,19 @@ if __name__ == '__main__':
         print("  Num negative examples = %d", len(glossbert_dataset.neg_indexes))
         print("  Num invalid examples = %d", len(glossbert_dataset.invalid_indexes))
         # Load open-source bert
-        bert_model = BertModel.from_pretrained('bert-model')
+        bert_model = BertModel.from_pretrained(bert_dir)
         model = BaseModel(bert_model).to(device)
         bert_pretrain(model, glossbert_dataset)
     elif args.mode == 'eval-baseline':
         glossbert_dataset = GlossBERTDataset_for_CGPair_Feature.from_data_csv(
-            'Evaluation_Datasets/semeval2007/semeval2007_test_token_cls.csv', tokenizer, max_seq_length=args.max_seq_length)
+            csv_paths[args.eval_dataset], tokenizer, max_seq_length=args.max_seq_length)
         #with open('Evaluation_Datasets/semeval2007/semval2007_glossbert_dataset.pkl', 'rb') as rbf:
             #glossbert_dataset = pickle.load(rbf)
         print("  Num positive examples = %d", len(glossbert_dataset.pos_indexes))
         print("  Num negative examples = %d", len(glossbert_dataset.neg_indexes))
         print("  Num invalid examples = %d", len(glossbert_dataset.invalid_indexes))
         # Load open-source bert
-        bert_model = BertModel.from_pretrained('bert-model')
+        bert_model = BertModel.from_pretrained(bert_dir)
         model = BaseModel(bert_model).to(device)
-        model.load_state_dict(torch.load(args.checkpoint, map_location=torch.device('cpu')))
+        #model.load_state_dict(torch.load(args.checkpoint, map_location=torch.device('cpu')))
         eval_baseline(model, glossbert_dataset)

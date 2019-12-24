@@ -8,6 +8,7 @@ import torch
 from torch.utils.data import Dataset
 from tqdm import tqdm
 
+from constants import *
 from model.definition import *
 from tokenization import BertTokenizer
 from utils.dataset_prepare_utils import convert_example_to_features, convert_example_to_features2
@@ -177,25 +178,17 @@ def _parse_args():
 if __name__ == '__main__':
     args = _parse_args()
 
-    csv_paths = {
-        'train':       '../Training_Corpora/SemCor/semcor_train_token_cls.csv',
-        'dev':         '../Evaluation_Datasets/semeval2007/semeval2007_test_token_cls.csv',
-        '2013': '../Evaluation_Datasets/semeval2013/semeval2013_test_token_cls.csv',
-        '2015': '../Evaluation_Datasets/semeval2015/semeval2015_test_token_cls.csv',
-        '2':    '../Evaluation_Datasets/senseval2/senseval2_test_token_cls.csv',
-        '3':    '../Evaluation_Datasets/senseval3/senseval3_test_token_cls.csv',
-        'ALL':         '../Evaluation_Datasets/ALL/ALL_test_token_cls.csv'
-    }
+
     tokenizer = BertTokenizer.from_pretrained('../bert-model', do_lower_case=True)
 
     #with open('../Training_Corpora/SemCor/train_glossbert_dataset.pkl', 'rb') as rbf:
         #glossbert_dataset = pickle.load(rbf)
 
-    target = '3'
+    target = 'dev'
     if target == 'train':
         glossbert_dataset = GlossBERTDataset_for_CGPair_Feature.from_data_csv(
             csv_paths['train'], tokenizer, max_seq_length=args.max_seq_length)
-        with open('../Training_Corpora/SemCor/train_glossbert_dataset.pkl', 'wb') as wbf:
+        with open('..                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              /Training_Corpora/SemCor/train_glossbert_dataset.pkl', 'wb') as wbf:
             pickle.dump(glossbert_dataset, wbf)
     elif target == 'dev':
         glossbert_dataset = GlossBERTDataset_for_CGPair_Feature.from_data_csv(
