@@ -95,7 +95,7 @@ def parse_args():
                              "Sequences longer than this will be truncated, and sequences shorter \n"
                              "than this will be padded.")
     parser.add_argument("--train_batch_size",
-                        default=20,
+                        default=80,
                         type=int,
                         help="Total batch size for training.")
     parser.add_argument("--neg_pos_ratio",
@@ -277,8 +277,8 @@ def eval_baseline(model, dataset):
 def agent_pretrain(base_model, agent_model, dataset):
     base_model.eval()
     agent_model.train()
-    sampler = SequentialSampler(dataset)
-    # sampler = RandomSampler(dataset)
+    # sampler = SequentialSampler(dataset)
+    sampler = RandomSampler(dataset)
     agent_pretrain_dataloader = DataLoader(dataset, sampler=sampler, batch_size=1, collate_fn=lambda x: x)
     agent_optimizer = Adam(agent_model.parameters())
     observe_interval = 100
@@ -306,7 +306,7 @@ def agent_pretrain(base_model, agent_model, dataset):
             for i in range(batch_size):
                 selection_mask_tensor[i][start_id[i]:end_id[i]] = 1
             with torch.no_grad():
-                logits, all_decision_vecs = base_model(input_ids_tensor, input_mask_tensor, segment_ids_tensor, selection_mask_tensor, output_target_hiddens=True)
+                logits, final_target_hidden_batch_tensor, gloss_hidden_tensors_list = base_model(input_ids_tensor, input_mask_tensor, segment_ids_tensor, selection_mask_tensor, output_target_hiddens=True)
             probs = F.softmax(logits, dim=-1)
             pred_list = []
             for i in range(len(valid_instances)):
@@ -316,14 +316,13 @@ def agent_pretrain(base_model, agent_model, dataset):
 
             tmp_reward = 0
             for i in range(args.num_agent_sample):
-                new_logits = agent_model(base_model, valid_instances, all_decision_vecs, sep_pos, pred_list)
+                new_logits = agent_model(base_model, valid_instances, final_target_hidden_batch_tensor, gloss_hidden_tensors_list, sep_pos, pred_list)
                 new_probs = F.softmax(new_logits, dim=-1)
                 new_pred_list = []
                 for i in range(len(valid_instances)):
                     pred = new_probs[sep_pos[i]: sep_pos[i + 1], 1].argmax().item()
                     new_pred_list.append(pred)
-                new_avg_cross_entropy = compute_avg_cross_entropy(new_logits, label_tensor, sep_pos,
-                                                                  len(valid_instances))
+                new_avg_cross_entropy = compute_avg_cross_entropy(new_logits, label_tensor, sep_pos, len(valid_instances))
 
                 reward = compute_reward(avg_cross_entropy, new_avg_cross_entropy)
                 tmp_reward += reward.item()

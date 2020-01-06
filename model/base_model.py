@@ -56,11 +56,15 @@ class BaseModel2(nn.Module):
         scaling_factor_tensor = selection_mask_tensor.sum(1).unsqueeze(-1)
         # Restrict the scaling factor >= 1 to avoid x/0 in case of invalid inputs
         scaling_factor_tensor = torch.where(scaling_factor_tensor >= 1, scaling_factor_tensor, torch.ones_like(scaling_factor_tensor))
-        final_target_hidden_batch = (hiddens_selected.sum(1))/scaling_factor_tensor.float()
+        final_target_hidden_batch_tensor = (hiddens_selected.sum(1))/scaling_factor_tensor.float()
 
-        logits = self.classifier(final_target_hidden_batch)
+        logits = self.classifier(final_target_hidden_batch_tensor)
 
         if output_target_hiddens:
-            return logits, final_target_hidden_batch
+            gloss_start_pos_tensor = input_mask1_tensor.sum(1)-segment_ids1_tensor.sum(1)
+            gloss_length_tensor = segment_ids1_tensor.sum(1)
+            gloss_hidden_tensors_list = [bert_hiddens1[:, gloss_start_pos_tensor[i]:gloss_start_pos_tensor[i]+gloss_length_tensor[i]].mean(1) for i in range(len(bert_hiddens1))]
+
+            return logits, final_target_hidden_batch_tensor, gloss_hidden_tensors_list
 
         return logits
