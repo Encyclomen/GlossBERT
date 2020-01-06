@@ -46,7 +46,8 @@ class Agent(nn.Module):
                     target_decision_vecs_tensor = all_decision_vecs[left_instance_idx]
                     updated_target_decision_vecs_tensor = self.update_decision_vec(selected_decision_vec, target_decision_vecs_tensor)
                     all_decision_vecs[left_instance_idx] = updated_target_decision_vecs_tensor
-                new_logits = base_model.classifier(torch.cat(all_decision_vecs, dim=0))
+                with torch.no_grad():
+                    new_logits = base_model.classifier(torch.cat(all_decision_vecs, dim=0))
                 #pred_list = 1
             else:
                 picked_idx = next_sample_prob.argmax(dim=0)
@@ -82,7 +83,7 @@ class Agent(nn.Module):
         d = selected_decision_vec.size(0)
         Q = self.W_q(selected_decision_vec.unsqueeze(0))
         K = self.W_kv(target_decision_vecs_tensor)
-        attn = F.softmax(torch.matmul(Q, K.transpose(0, 1)) / math.sqrt(d))
+        attn = F.softmax(torch.matmul(Q, K.transpose(0, 1)) / math.sqrt(d), dim=-1)
         #max_id = attn.argmax()
         #attn_ = attn.new_zeros(attn.size())
         delta_target_decision_vecs_tensor = torch.matmul(attn.transpose(0, 1), selected_decision_vec.unsqueeze(0))

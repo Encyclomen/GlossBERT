@@ -305,8 +305,8 @@ def agent_pretrain(base_model, agent_model, dataset):
             selection_mask_tensor = torch.zeros(batch_size, seq_len, device=device)
             for i in range(batch_size):
                 selection_mask_tensor[i][start_id[i]:end_id[i]] = 1
-
-            logits, all_decision_vecs = base_model(input_ids_tensor, input_mask_tensor, segment_ids_tensor, selection_mask_tensor, output_target_hiddens=True)
+            with torch.no_grad():
+                logits, all_decision_vecs = base_model(input_ids_tensor, input_mask_tensor, segment_ids_tensor, selection_mask_tensor, output_target_hiddens=True)
             probs = F.softmax(logits, dim=-1)
             pred_list = []
             for i in range(len(valid_instances)):
@@ -328,10 +328,12 @@ def agent_pretrain(base_model, agent_model, dataset):
                 reward = compute_reward(avg_cross_entropy, new_avg_cross_entropy)
                 tmp_reward += reward.item()
                 reward.backward()
-            agent_optimizer.step()
+            if accum_batch_size >= args.train_batch_size:
+                agent_optimizer.step()
+                accum_batch_size = 0
 
             total_reward += tmp_reward / args.num_agent_sample
-            if step / observe_interval == 0:
+            if step % observe_interval == 0:
                 print('Epoch: %d, Step: %d, avg_loss: %.4f' % (epoch, step, (total_reward / observe_interval)))
                 wf.write('Epoch: %d, Step: %d, avg_loss: %.4f\n' % (epoch, step, (total_reward / observe_interval)))
                 total_reward = 0
@@ -401,5 +403,5 @@ if __name__ == '__main__':
         bert_model = BertModel.from_pretrained(bert_dir)
         base_model = BaseModel(bert_model).to(device)
         base_model.load_state_dict(torch.load(args.checkpoint, map_location=torch.device('cpu')))
-        agent_model = Agent(hidden_size=768)
+        agent_model = Agent(hidden_size=768).to(device)
         agent_pretrain(base_model, agent_model, glossbert_dataset)
