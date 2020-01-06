@@ -2,7 +2,7 @@ import random
 
 from tqdm import tqdm
 
-from model.definition import InputFeatures
+from model.definition import InputFeatures, InputExample
 
 
 def _truncate_seq_pair(tokens_a, tokens_b, max_length, target_end=float('-inf')):
@@ -270,3 +270,22 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
                           label_id=label_id,
                           target_mask=target_mask))
     return features
+
+
+def convert_sentence_to_feature_batch(sentence, max_seq_length, tokenizer):
+    valid_instances = list(filter(lambda inst: inst.end_pos < max_seq_length*2//3, sentence.instances))
+
+    feature_batch = []
+    sep_pos = [0]
+
+    for instance in valid_instances:
+        for idx, cand_sense in enumerate(instance, start=0):
+            sense_key, gloss, label = cand_sense
+            cur_example = InputExample(guid=instance.id, cand_sense_key=sense_key, text_a=sentence.text,
+                                       start_id=instance.start_pos, end_id=instance.end_pos,
+                                       text_b=gloss, label=label)
+            feature = convert_example_to_features2(cur_example, max_seq_length, tokenizer)
+            feature_batch.append(feature)
+        sep_pos.append(len(feature_batch))
+
+    return valid_instances, sep_pos, feature_batch

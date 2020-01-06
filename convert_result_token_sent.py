@@ -27,7 +27,7 @@ def main():
     input_file_name = args.input_file
     output_dir = args.output_dir
 
-    dataset = 'senseval2'
+    dataset = 'semeval2007'
     input_file_name = 'output/eval_log.txt'
     output_dir = 'results'
 

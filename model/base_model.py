@@ -47,7 +47,7 @@ class BaseModel2(nn.Module):
         #self.context_lstm = LSTM(input_size=hidden_size, hidden_size=hidden_size, bidirectional=True)
         #self.gloss_lstm = LSTM(input_size=hidden_size, hidden_size=hidden_size, bidirectional=True)
 
-    def forward(self, input_id1s_tensor, input_mask1_tensor, segment_ids1_tensor, selection_mask_tensor):
+    def forward(self, input_id1s_tensor, input_mask1_tensor, segment_ids1_tensor, selection_mask_tensor, output_target_hiddens=False):
         real_selection_mask_tensor = selection_mask_tensor.unsqueeze(-1).expand(-1, -1, self.bert_config.hidden_size)
         bert_hiddens1, _ = self.bert_model(input_id1s_tensor, token_type_ids=segment_ids1_tensor,
                         attention_mask=input_mask1_tensor, output_all_encoded_layers=False)
@@ -56,8 +56,11 @@ class BaseModel2(nn.Module):
         scaling_factor_tensor = selection_mask_tensor.sum(1).unsqueeze(-1)
         # Restrict the scaling factor >= 1 to avoid x/0 in case of invalid inputs
         scaling_factor_tensor = torch.where(scaling_factor_tensor >= 1, scaling_factor_tensor, torch.ones_like(scaling_factor_tensor))
-        final_target_hidden_batch = (hiddens_selected.sum(1))/scaling_factor_tensor
+        final_target_hidden_batch = (hiddens_selected.sum(1))/scaling_factor_tensor.float()
 
         logits = self.classifier(final_target_hidden_batch)
+
+        if output_target_hiddens:
+            return logits, final_target_hidden_batch
 
         return logits

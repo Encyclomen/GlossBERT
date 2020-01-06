@@ -11,7 +11,7 @@ from tqdm import tqdm
 from constants import *
 from model.definition import *
 from tokenization import BertTokenizer
-from utils.dataset_prepare_utils import convert_example_to_features, convert_example_to_features2
+from utils.dataset_prepare_utils import *
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +103,7 @@ class GlossBERTDataset_for_CGPair_Feature(GlossBERTDataset):
         try:
             self.max_seq_length = kwargs['max_seq_length']
         except:
-            self.max_seq_length = 100
+            self.max_seq_length = 150
         #self.positive_examples = []
         #self.negative_examples = []
 

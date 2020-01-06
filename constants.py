@@ -5,7 +5,7 @@ project_root_dir = os.path.split(os.path.realpath(__file__))[0]
 
 csv_relative_paths = {
         'train': 'Training_Corpora/SemCor/semcor_train_token_cls.csv',
-        '2007': 'Evaluation_Datasets\\semeval2007\\semeval2007_test_token_cls.csv',
+        '2007': 'Evaluation_Datasets/semeval2007/semeval2007_test_token_cls.csv',
         '2013': 'Evaluation_Datasets/semeval2013/semeval2013_test_token_cls.csv',
         '2015': 'Evaluation_Datasets/semeval2015/semeval2015_test_token_cls.csv',
         '2': 'Evaluation_Datasets/senseval2/senseval2_test_token_cls.csv',

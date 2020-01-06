@@ -13,6 +13,7 @@ import pickle
 import numpy as np
 import torch
 import torch.nn.functional as F
+from torch.optim import Adam
 from torch.utils.data import (DataLoader, RandomSampler, TensorDataset, SequentialSampler)
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm, trange
@@ -21,6 +22,7 @@ from torch.nn import CrossEntropyLoss, MSELoss
 
 from dataset.sampler import NegDownSampler
 from file_utils import PYTORCH_PRETRAINED_BERT_CACHE, WEIGHTS_NAME, CONFIG_NAME
+from model.agent import Agent
 from model.definition import InputExample, InputFeatures
 from model.modeling import *
 from model.base_model import BaseModel2 as BaseModel
@@ -31,13 +33,30 @@ from dataset.glossbert_dataset import *
 logger = logging.getLogger(__name__)
 
 
+def compute_avg_cross_entropy(logits, label_tensor, sep_pos, num_instances):
+    sense_wise_cross_entropy = F.cross_entropy(logits, label_tensor, reduction='none')
+    instance_wise_avg_cross_entropy = []
+    for i in range(num_instances):
+        instance_avg_cross_entropy = sense_wise_cross_entropy[sep_pos[i]:sep_pos[i + 1]].mean()
+        instance_wise_avg_cross_entropy.append(instance_avg_cross_entropy)
+    avg_cross_entropy = torch.stack(instance_wise_avg_cross_entropy).mean()
+
+    return avg_cross_entropy
+
+
+def compute_reward(ori_avg_cross_entropy, new_avg_cross_entropy):
+    reward = new_avg_cross_entropy - ori_avg_cross_entropy
+
+    return reward
+
+
 def parse_args():
     parser = argparse.ArgumentParser()
     ## Required parameters
     parser.add_argument("--mode",
-                        default='eval-baseline',
+                        default='RL-train',
                         type=str,
-                        choices=["bert-pretrain", "eval-baseline"],
+                        choices=["bert-pretrain", "eval-baseline", "RL-train"],
                         help="The mode to run.")
     parser.add_argument("--train_data_dir",
                         default=None,
@@ -124,8 +143,12 @@ def parse_args():
                         help="Loss scaling to improve fp16 numeric stability. Only used when fp16 set to True.\n"
                              "0 (default value): dynamic loss scaling.\n"
                              "Positive power of 2: static loss scaling value.\n")
+    parser.add_argument('--num_agent_sample',
+                        type=int,
+                        default=5,
+                        help="Number of sampling during agent training")
     parser.add_argument("--checkpoint",
-                        default='output/2_pytorch_model.bin',
+                        default='output/3_pytorch_model.bin',
                         type=str,
                         help="The saved checkpoint model path to load.")
     parser.add_argument("--eval_dataset",
@@ -140,7 +163,7 @@ def parse_args():
 def bert_pretrain(model, dataset):
     model.train()
     #sampler = SequentialSampler(dataset)
-    #sampler = RandomSampler(glossbert_dataset)
+    #sampler = RandomSampler(dataset)
     sampler = NegDownSampler(dataset, neg_pos_ratio=args.neg_pos_ratio)
     bert_pretrain_dataloader = DataLoader(dataset, sampler=sampler, batch_size=args.train_batch_size,
                                           collate_fn=lambda x: zip(*x))
@@ -251,6 +274,75 @@ def eval_baseline(model, dataset):
     print('Label accuracy: %.2f' % (total_num_correct_pred/total_num_example))
 
 
+def agent_pretrain(base_model, agent_model, dataset):
+    base_model.eval()
+    agent_model.train()
+    sampler = SequentialSampler(dataset)
+    # sampler = RandomSampler(dataset)
+    agent_pretrain_dataloader = DataLoader(dataset, sampler=sampler, batch_size=1, collate_fn=lambda x: x)
+    agent_optimizer = Adam(agent_model.parameters())
+    observe_interval = 100
+
+    for epoch in trange(int(args.num_train_epochs), desc="Epoch"):
+        wf = open(os.path.join(args.output_dir, 'log_agent_train_%d.txt' % epoch), 'w')
+        accum_batch_size = 0
+        total_reward = 0
+        for step, batch in enumerate(tqdm(agent_pretrain_dataloader, desc="Iteration"), start=1):
+            cur_sentence = batch[0]
+            #cur_sentence = dataset[1]
+            valid_instances, sep_pos, feature_batch = convert_sentence_to_feature_batch(cur_sentence, args.max_seq_length, tokenizer)
+            guid, cand_sense_key, input_ids, input_mask, segment_ids, start_id, end_id, label = zip(*feature_batch)
+
+            input_ids_tensor = torch.tensor(input_ids, dtype=torch.long, device=device)
+            input_mask_tensor = torch.tensor(input_mask, dtype=torch.long, device=device)
+            segment_ids_tensor = torch.tensor(segment_ids, dtype=torch.long, device=device)
+
+            label_tensor = torch.tensor(label, dtype=torch.long, device=device)
+
+            batch_size, seq_len = input_ids_tensor.size()
+            accum_batch_size += batch_size
+            # The mask has 1 for real target
+            selection_mask_tensor = torch.zeros(batch_size, seq_len, device=device)
+            for i in range(batch_size):
+                selection_mask_tensor[i][start_id[i]:end_id[i]] = 1
+
+            logits, all_decision_vecs = base_model(input_ids_tensor, input_mask_tensor, segment_ids_tensor, selection_mask_tensor, output_target_hiddens=True)
+            probs = F.softmax(logits, dim=-1)
+            pred_list = []
+            for i in range(len(valid_instances)):
+                pred = probs[sep_pos[i]: sep_pos[i + 1], 1].argmax().item()
+                pred_list.append(pred)
+            avg_cross_entropy = compute_avg_cross_entropy(logits, label_tensor, sep_pos, len(valid_instances))
+
+            tmp_reward = 0
+            for i in range(args.num_agent_sample):
+                new_logits = agent_model(base_model, valid_instances, all_decision_vecs, sep_pos, pred_list)
+                new_probs = F.softmax(new_logits, dim=-1)
+                new_pred_list = []
+                for i in range(len(valid_instances)):
+                    pred = new_probs[sep_pos[i]: sep_pos[i + 1], 1].argmax().item()
+                    new_pred_list.append(pred)
+                new_avg_cross_entropy = compute_avg_cross_entropy(new_logits, label_tensor, sep_pos,
+                                                                  len(valid_instances))
+
+                reward = compute_reward(avg_cross_entropy, new_avg_cross_entropy)
+                tmp_reward += reward.item()
+                reward.backward()
+            agent_optimizer.step()
+
+            total_reward += tmp_reward / args.num_agent_sample
+            if step / observe_interval == 0:
+                print('Epoch: %d, Step: %d, avg_loss: %.4f' % (epoch, step, (total_reward / observe_interval)))
+                wf.write('Epoch: %d, Step: %d, avg_loss: %.4f\n' % (epoch, step, (total_reward / observe_interval)))
+                total_reward = 0
+        wf.close()
+        # Save a trained model
+        logger.info("** ** * Saving agent model ** ** * ")
+        model_to_save = agent_model.module if hasattr(agent_model, 'module') else agent_model  # Only save the model it-self
+        output_model_file = os.path.join(args.output_dir, '_'.join((str(epoch), 'agent.bin')))
+        torch.save(model_to_save.state_dict(), output_model_file)
+
+
 if __name__ == '__main__':
     bert_pretrain_logger = logging.getLogger(__name__)
 
@@ -298,5 +390,16 @@ if __name__ == '__main__':
         # Load open-source bert
         bert_model = BertModel.from_pretrained(bert_dir)
         model = BaseModel(bert_model).to(device)
-        #model.load_state_dict(torch.load(args.checkpoint, map_location=torch.device('cpu')))
+        model.load_state_dict(torch.load(args.checkpoint, map_location=torch.device('cpu')))
         eval_baseline(model, glossbert_dataset)
+    elif args.mode == 'RL-train':
+        glossbert_dataset = GlossBERTDataset_for_Sentence.from_data_csv(
+            csv_paths[args.eval_dataset], tokenizer, max_seq_length=args.max_seq_length)
+        #with open('Evaluation_Datasets/semeval2007/semval2007_glossbert_dataset.pkl', 'rb') as rbf:
+            #glossbert_dataset = pickle.load(rbf)
+        # Load open-source bert
+        bert_model = BertModel.from_pretrained(bert_dir)
+        base_model = BaseModel(bert_model).to(device)
+        base_model.load_state_dict(torch.load(args.checkpoint, map_location=torch.device('cpu')))
+        agent_model = Agent(hidden_size=768)
+        agent_pretrain(base_model, agent_model, glossbert_dataset)
