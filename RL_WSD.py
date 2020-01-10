@@ -33,21 +33,33 @@ from dataset.glossbert_dataset import *
 logger = logging.getLogger(__name__)
 
 
-def compute_avg_cross_entropy(logits, label_tensor, sep_pos, num_instances):
+def compute_sum_cross_entropy(logits, label_tensor, sep_pos, num_instances):
     sense_wise_cross_entropy = F.cross_entropy(logits, label_tensor, reduction='none')
     instance_wise_avg_cross_entropy = []
-    for i in range(num_instances):
-        instance_avg_cross_entropy = sense_wise_cross_entropy[sep_pos[i]:sep_pos[i + 1]].mean()
-        instance_wise_avg_cross_entropy.append(instance_avg_cross_entropy)
+    #for i in range(num_instances):
+        #instance_avg_cross_entropy = sense_wise_cross_entropy[sep_pos[i]:sep_pos[i + 1]].mean()
+        #instance_wise_avg_cross_entropy.append(instance_avg_cross_entropy)
     avg_cross_entropy = torch.stack(instance_wise_avg_cross_entropy).mean()
 
     return avg_cross_entropy
 
 
-def compute_reward(ori_avg_cross_entropy, new_avg_cross_entropy):
-    reward = new_avg_cross_entropy - ori_avg_cross_entropy
+def compute_reward(new_logits, ori_logits, label_tensor, sep_pos, num_instances, sample_probs, selected_instance_idx, alpha=0.5):
+    new_sense_wise_cross_entropy = F.cross_entropy(new_logits, label_tensor, reduction='none')
+    new_sum_cross_entropy = new_sense_wise_cross_entropy.sum()
+    ori_sense_wise_cross_entropy = F.cross_entropy(ori_logits, label_tensor, reduction='none')
+    ori_sum_cross_entropy = ori_sense_wise_cross_entropy.sum()
 
-    return reward
+    instance_wise_sum_cross_entropy = []
+    for i in range(num_instances):
+        instance_wise_sum_cross_entropy.append(ori_sense_wise_cross_entropy[sep_pos[i]:sep_pos[i+1]].sum())
+
+    WSD_reward = sample_probs[selected_instance_idx]*(new_sum_cross_entropy-ori_sum_cross_entropy)/num_instances
+    instance_select_reward = torch.matmul(sample_probs.unsqueeze(0), torch.stack(instance_wise_sum_cross_entropy).unsqueeze(1))/num_instances
+
+    reward = alpha*WSD_reward + (1-alpha)*instance_select_reward
+
+    return reward, WSD_reward, instance_select_reward
 
 
 def parse_args():
@@ -277,16 +289,18 @@ def eval_baseline(model, dataset):
 def agent_pretrain(base_model, agent_model, dataset):
     base_model.eval()
     agent_model.train()
-    # sampler = SequentialSampler(dataset)
-    sampler = RandomSampler(dataset)
+    sampler = SequentialSampler(dataset)
+    #sampler = RandomSampler(dataset)
     agent_pretrain_dataloader = DataLoader(dataset, sampler=sampler, batch_size=1, collate_fn=lambda x: x)
     agent_optimizer = Adam(agent_model.parameters())
-    observe_interval = 100
+    observe_interval = 10
 
     for epoch in trange(int(args.num_train_epochs), desc="Epoch"):
         wf = open(os.path.join(args.output_dir, 'log_agent_train_%d.txt' % epoch), 'w')
         accum_batch_size = 0
         total_reward = 0
+        total_WSD_reward = 0
+        total_instance_select_reward = 0
         for step, batch in enumerate(tqdm(agent_pretrain_dataloader, desc="Iteration"), start=1):
             cur_sentence = batch[0]
             #cur_sentence = dataset[1]
@@ -306,36 +320,47 @@ def agent_pretrain(base_model, agent_model, dataset):
             for i in range(batch_size):
                 selection_mask_tensor[i][start_id[i]:end_id[i]] = 1
             with torch.no_grad():
-                logits, final_target_hidden_batch_tensor, gloss_hidden_tensors_list = base_model(input_ids_tensor, input_mask_tensor, segment_ids_tensor, selection_mask_tensor, output_target_hiddens=True)
-            probs = F.softmax(logits, dim=-1)
+                ori_logits, final_target_hidden_batch_tensor, mention_aware_gloss_hidden_tensors_list = \
+                    base_model(input_ids_tensor, input_mask_tensor, segment_ids_tensor, selection_mask_tensor, output_target_hiddens=True)
+            ori_probs = F.softmax(ori_logits, dim=-1)
             pred_list = []
             for i in range(len(valid_instances)):
-                pred = probs[sep_pos[i]: sep_pos[i + 1], 1].argmax().item()
+                pred = ori_probs[sep_pos[i]: sep_pos[i + 1], 1].argmax().item()
+                #pred = valid_instances[i].get_gold_label_index()
                 pred_list.append(pred)
-            avg_cross_entropy = compute_avg_cross_entropy(logits, label_tensor, sep_pos, len(valid_instances))
 
             tmp_reward = 0
+            tmp_WSD_reward = 0
+            tmp_instance_select_reward= 0
             for i in range(args.num_agent_sample):
-                new_logits = agent_model(base_model, valid_instances, final_target_hidden_batch_tensor, gloss_hidden_tensors_list, sep_pos, pred_list)
+                new_logits, sample_probs, selected_instance_idx = agent_model(base_model, valid_instances, final_target_hidden_batch_tensor,
+                                                           mention_aware_gloss_hidden_tensors_list, sep_pos, pred_list)
                 new_probs = F.softmax(new_logits, dim=-1)
                 new_pred_list = []
                 for i in range(len(valid_instances)):
                     pred = new_probs[sep_pos[i]: sep_pos[i + 1], 1].argmax().item()
                     new_pred_list.append(pred)
-                new_avg_cross_entropy = compute_avg_cross_entropy(new_logits, label_tensor, sep_pos, len(valid_instances))
-
-                reward = compute_reward(avg_cross_entropy, new_avg_cross_entropy)
+                reward, WSD_reward, instance_select_reward = compute_reward(new_logits, ori_logits, label_tensor, sep_pos, len(valid_instances), sample_probs, selected_instance_idx, alpha=0.5)
                 tmp_reward += reward.item()
+                tmp_WSD_reward += WSD_reward.item()
+                tmp_instance_select_reward += instance_select_reward.item()
+
                 reward.backward()
             if accum_batch_size >= args.train_batch_size:
                 agent_optimizer.step()
                 accum_batch_size = 0
 
             total_reward += tmp_reward / args.num_agent_sample
+            total_WSD_reward += tmp_WSD_reward / args.num_agent_sample
+            total_instance_select_reward += tmp_instance_select_reward / args.num_agent_sample
             if step % observe_interval == 0:
-                print('Epoch: %d, Step: %d, avg_loss: %.4f' % (epoch, step, (total_reward / observe_interval)))
-                wf.write('Epoch: %d, Step: %d, avg_loss: %.4f\n' % (epoch, step, (total_reward / observe_interval)))
+                print('Epoch: %d, Step: %d, avg_reward: %.4f, avg_WSD_reward: %.4f, avg_IS_reward: %.4f' %
+                      (epoch, step, (total_reward / observe_interval), (total_WSD_reward / observe_interval), (total_instance_select_reward / observe_interval)))
+                wf.write('Epoch: %d, Step: %d, avg_reward: %.4f, avg_WSD_reward: %.4f, avg_IS_reward: %.4f\n' %
+                         (epoch, step, (total_reward / observe_interval), (total_WSD_reward / observe_interval), (total_instance_select_reward / observe_interval)))
                 total_reward = 0
+                total_WSD_reward = 0
+                total_instance_select_reward = 0
         wf.close()
         # Save a trained model
         logger.info("** ** * Saving agent model ** ** * ")

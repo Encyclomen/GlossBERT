@@ -63,8 +63,10 @@ class BaseModel2(nn.Module):
         if output_target_hiddens:
             gloss_start_pos_tensor = input_mask1_tensor.sum(1)-segment_ids1_tensor.sum(1)
             gloss_length_tensor = segment_ids1_tensor.sum(1)
-            gloss_hidden_tensors_list = [bert_hiddens1[:, gloss_start_pos_tensor[i]:gloss_start_pos_tensor[i]+gloss_length_tensor[i]].mean(1) for i in range(len(bert_hiddens1))]
+            mention_aware_gloss_hidden_tensors_list = torch.stack([
+                bert_hiddens1[i, gloss_start_pos_tensor[i]:gloss_start_pos_tensor[i] + gloss_length_tensor[i]].mean(0)
+                for i in range(len(bert_hiddens1))], dim=0)
 
-            return logits, final_target_hidden_batch_tensor, gloss_hidden_tensors_list
+            return logits, final_target_hidden_batch_tensor, mention_aware_gloss_hidden_tensors_list
 
         return logits
