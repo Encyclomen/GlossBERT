@@ -13,7 +13,8 @@ import pickle
 import numpy as np
 import torch
 import torch.nn.functional as F
-from torch.optim import Adam
+from torch.nn.utils import clip_grad_norm_
+from torch.optim import AdamW
 from torch.utils.data import (DataLoader, RandomSampler, TensorDataset, SequentialSampler)
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm, trange
@@ -31,17 +32,6 @@ from optimization import BertAdam, warmup_linear
 from dataset.glossbert_dataset import *
 
 logger = logging.getLogger(__name__)
-
-
-def compute_sum_cross_entropy(logits, label_tensor, sep_pos, num_instances):
-    sense_wise_cross_entropy = F.cross_entropy(logits, label_tensor, reduction='none')
-    instance_wise_avg_cross_entropy = []
-    #for i in range(num_instances):
-        #instance_avg_cross_entropy = sense_wise_cross_entropy[sep_pos[i]:sep_pos[i + 1]].mean()
-        #instance_wise_avg_cross_entropy.append(instance_avg_cross_entropy)
-    avg_cross_entropy = torch.stack(instance_wise_avg_cross_entropy).mean()
-
-    return avg_cross_entropy
 
 
 def compute_reward(new_logits, ori_logits, label_tensor, sep_pos, num_instances, sample_probs, selected_instance_idx, alpha=0.5):
@@ -292,8 +282,8 @@ def agent_pretrain(base_model, agent_model, dataset):
     sampler = SequentialSampler(dataset)
     #sampler = RandomSampler(dataset)
     agent_pretrain_dataloader = DataLoader(dataset, sampler=sampler, batch_size=1, collate_fn=lambda x: x)
-    agent_optimizer = Adam(agent_model.parameters())
-    observe_interval = 10
+    agent_optimizer = AdamW(agent_model.parameters(), lr=args.learning_rate,weight_decay=1)
+    observe_interval = 100
 
     for epoch in trange(int(args.num_train_epochs), desc="Epoch"):
         wf = open(os.path.join(args.output_dir, 'log_agent_train_%d.txt' % epoch), 'w')
@@ -345,9 +335,10 @@ def agent_pretrain(base_model, agent_model, dataset):
                 tmp_WSD_reward += WSD_reward.item()
                 tmp_instance_select_reward += instance_select_reward.item()
 
-                reward.backward()
+                #reward.backward()
             if accum_batch_size >= args.train_batch_size:
-                agent_optimizer.step()
+                clip_grad_norm_(model.parameters(), 1.0, norm_type=2)
+                #agent_optimizer.step()
                 accum_batch_size = 0
 
             total_reward += tmp_reward / args.num_agent_sample
@@ -428,4 +419,5 @@ if __name__ == '__main__':
         base_model = BaseModel(bert_model).to(device)
         base_model.load_state_dict(torch.load(args.checkpoint, map_location=torch.device('cpu')))
         agent_model = Agent(hidden_size=768).to(device)
+        #agent_model.load_state_dict(torch.load('output/0_agent.bin', map_location=torch.device('cpu')))
         agent_pretrain(base_model, agent_model, glossbert_dataset)
