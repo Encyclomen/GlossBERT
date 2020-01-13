@@ -1,3 +1,4 @@
+import copy
 import math
 import random
 
@@ -20,48 +21,88 @@ class Agent(nn.Module):
     def __init__(self, hidden_size):
         super(Agent, self).__init__()
         self.scorer = nn.Sequential(nn.Linear(hidden_size+hidden_size, hidden_size), nn.ReLU(), nn.Linear(hidden_size, 1))
-        self.W1 = nn.Linear(hidden_size+hidden_size, hidden_size)
-        self.W2 = nn.Linear(hidden_size+hidden_size, hidden_size)
-        self.Wa = nn.Linear(hidden_size, 1)
+        self.gru1 = nn.GRUCell(hidden_size+hidden_size, hidden_size)
+        self.gru2 = nn.GRUCell(hidden_size, hidden_size)
+        #self.W1 = nn.Linear(hidden_size, hidden_size)
+        #self.W2 = nn.Linear(hidden_size, hidden_size)
+        #self.Wa = nn.Linear(hidden_size, 1)
         self.V1 = nn.Linear(hidden_size + hidden_size, hidden_size)
         self.V2 = nn.Linear(hidden_size + hidden_size, hidden_size)
         self.U = nn.Linear(hidden_size, hidden_size)
 
-    def forward(self, base_model, instances, init_all_decision_vecs_tensor, mention_aware_gloss_tensor, sep_pos, init_pred_list, mode='single-step-train'):
+    def forward(self, base_model, instances, init_all_decision_vecs_tensor, mention_aware_gloss_tensor, sep_pos, init_pred_list, mode='single-step-train', num_sample=5):
         assert mode in ['train', 'single-step-train', 'eval']
         left_instances_idx = list(range(len(instances)))
         all_decision_vec_tensors_list = []
         all_mention_aware_gloss_tensors_list = []
         for i in range(len(instances)):
-            decision_vec_tensor = init_all_decision_vecs_tensor[sep_pos[left_instances_idx[i]]:sep_pos[left_instances_idx[i] + 1]]
+            decision_vec_tensor = init_all_decision_vecs_tensor[sep_pos[left_instances_idx[i]]:sep_pos[left_instances_idx[i]+1]]
             all_decision_vec_tensors_list.append(decision_vec_tensor)
-            all_mention_aware_gloss_tensors_list.append(mention_aware_gloss_tensor[sep_pos[left_instances_idx[i]]:sep_pos[left_instances_idx[i] + 1]])
+            all_mention_aware_gloss_tensors_list.append(mention_aware_gloss_tensor[sep_pos[left_instances_idx[i]]:sep_pos[left_instances_idx[i]+1]])
         pred_list = init_pred_list
-        while len(left_instances_idx) > 0:
-            decision_vecs_tensor_list = []
+        #sep_len = [sep_pos[i+1] - sep_pos[i] for i in range(len(sep_pos)-1)]
+        while len(left_instances_idx) > 1:
+            decision_vec_tensors_list = []
+            mention_aware_gloss_tensors_list = []
             for left_instance_idx in left_instances_idx:
                 decision_vec_tensor = all_decision_vec_tensors_list[left_instance_idx]
-                decision_vecs_tensor_list.append(decision_vec_tensor)
-            next_sample_probs = self.choose_next(decision_vecs_tensor_list, all_mention_aware_gloss_tensors_list, [pred_list[idx] for idx in left_instances_idx])
+                decision_vec_tensors_list.append(decision_vec_tensor)
+                mention_aware_gloss_tensors_list.append(all_mention_aware_gloss_tensors_list[left_instance_idx])
+            next_sample_probs = self.choose_next(decision_vec_tensors_list, mention_aware_gloss_tensors_list, [pred_list[idx] for idx in left_instances_idx])
             if mode != 'eval':
-                picked_idx = random_pick(list(range(len(left_instances_idx))), next_sample_probs)
-                selected_instance_idx = left_instances_idx.pop(picked_idx)
+                new_logits_list = []
+                selected_instance_idx_list = []
+                for i in range(num_sample):
+                    tmp_left_instances_idx = copy.deepcopy(left_instances_idx)
+                    tmp_all_decision_vec_tensors_list = copy.deepcopy(all_decision_vec_tensors_list)
+                    picked_idx = random_pick(list(range(len(tmp_left_instances_idx))), next_sample_probs)
+                    selected_instance_idx = tmp_left_instances_idx.pop(picked_idx)
+                    # selected_instance = instances[selected_instance_idx]
+                    selected_decision_vec_tensor = tmp_all_decision_vec_tensors_list[selected_instance_idx][
+                        pred_list[selected_instance_idx]]
+                    selected_gloss_vec_tensor = mention_aware_gloss_tensor[
+                        sep_pos[selected_instance_idx] + pred_list[selected_instance_idx]]
+                    for left_instance_idx in tmp_left_instances_idx:
+                        target_decision_vecs_tensor = tmp_all_decision_vec_tensors_list[left_instance_idx]
+                        target_gloss_vecs_tensor = mention_aware_gloss_tensor[
+                                                   sep_pos[left_instance_idx]:sep_pos[left_instance_idx + 1]]
+                        updated_target_decision_vecs_tensor = self.update_decision_vec(selected_decision_vec_tensor,
+                                                                                       selected_gloss_vec_tensor,
+                                                                                       target_decision_vecs_tensor,
+                                                                                       target_gloss_vecs_tensor)
+                        tmp_all_decision_vec_tensors_list[left_instance_idx] = updated_target_decision_vecs_tensor
+                    new_logits = base_model.classifier(torch.cat(tmp_all_decision_vec_tensors_list, dim=0))
+                    new_logits_list.append(new_logits)
+                    selected_instance_idx_list.append(selected_instance_idx)
+                if mode == 'single-step-train':
+                    return new_logits_list, next_sample_probs, selected_instance_idx_list
+            else:
+                #new_sep_pos = [0]
+                #for i in range(len(left_instances_idx)):
+                    #new_sep_pos.append(new_sep_pos[i]+sep_len[left_instances_idx[i]])
+                picked_idx = next_sample_probs.argmax(dim=0)
+                selected_instance_idx = left_instances_idx.pop(int(picked_idx))
                 # selected_instance = instances[selected_instance_idx]
                 selected_decision_vec_tensor = all_decision_vec_tensors_list[selected_instance_idx][pred_list[selected_instance_idx]]
-                selected_gloss_vec_tensor = mention_aware_gloss_tensor[sep_pos[selected_instance_idx]+pred_list[selected_instance_idx]]
+                selected_gloss_vec_tensor = mention_aware_gloss_tensor[
+                    sep_pos[selected_instance_idx] + pred_list[selected_instance_idx]]
+
                 for left_instance_idx in left_instances_idx:
                     target_decision_vecs_tensor = all_decision_vec_tensors_list[left_instance_idx]
-                    target_gloss_vecs_tensor = mention_aware_gloss_tensor[sep_pos[left_instance_idx]:sep_pos[left_instance_idx+1]]
-                    updated_target_decision_vecs_tensor = self.update_decision_vec(selected_decision_vec_tensor, selected_gloss_vec_tensor,
-                                                                                   target_decision_vecs_tensor, target_gloss_vecs_tensor)
+                    target_gloss_vecs_tensor = mention_aware_gloss_tensor[
+                                               sep_pos[left_instance_idx]:sep_pos[left_instance_idx+1]]
+                    updated_target_decision_vecs_tensor = self.update_decision_vec(selected_decision_vec_tensor,
+                                                                                   selected_gloss_vec_tensor,
+                                                                                   target_decision_vecs_tensor,
+                                                                                   target_gloss_vecs_tensor)
                     all_decision_vec_tensors_list[left_instance_idx] = updated_target_decision_vecs_tensor
-                new_logits = base_model.classifier(torch.cat(all_decision_vec_tensors_list, dim=0))
-                #pred_list = 1
-            else:
-                picked_idx = next_sample_probs.argmax(dim=0)
 
-            if mode == 'single-step-train':
-                return new_logits, next_sample_probs, selected_instance_idx
+                new_logits = base_model.classifier(torch.cat(all_decision_vec_tensors_list, dim=0))
+                new_probs = F.softmax(new_logits, dim=-1)
+
+                for i in range(len(instances)):
+                    new_pred = new_probs[sep_pos[i]: sep_pos[i+1], 1].argmax().item()
+                    pred_list[i] = new_pred
 
         return new_logits
 
@@ -101,28 +142,17 @@ class Agent(nn.Module):
 
     def update_decision_vec(self, selected_decision_vec_tensor, selected_gloss_vec_tensor,
                             target_decision_vecs_tensor, target_gloss_vecs_tensor):
-        selected_mention_gloss_vec_tensor = torch.cat((selected_decision_vec_tensor, selected_gloss_vec_tensor), dim=-1)
+        #selected_mention_gloss_vec_tensor = torch.cat((selected_decision_vec_tensor, selected_gloss_vec_tensor), dim=-1)
         target_mention_gloss_vecs_tensor = torch.cat((target_decision_vecs_tensor, target_gloss_vecs_tensor), dim=-1)
         N, d = target_mention_gloss_vecs_tensor.size()
-        attn_h = self.W1(selected_mention_gloss_vec_tensor.unsqueeze(0)).expand(N, -1) + self.W2(target_mention_gloss_vecs_tensor)
-        logits = self.Wa(F.tanh(attn_h))
+        '''
+        attn_h = self.W1(selected_gloss_vec_tensor.unsqueeze(0)).expand(N, -1) + self.W2(target_gloss_vecs_tensor)
+        logits = self.Wa(torch.tanh(attn_h))
         attn = F.softmax(logits, dim=0)
-
-        '''Q = self.W_q(selected_mention_gloss_vec_tensor.unsqueeze(0))
-        K = self.W_kv(target_decision_vecs_tensor)
-        attn = F.softmax(torch.matmul(Q, K.transpose(0, 1)) / math.sqrt(d), dim=-1)
-        #max_id = attn.argmax()
-        #attn_ = attn.new_zeros(attn.size())
-        delta_target_decision_vecs_tensor = torch.matmul(attn.transpose(0, 1), selected_decision_vec.unsqueeze(0))
-        updated_target_decision_vecs_tensor = target_decision_vecs_tensor + delta_target_decision_vecs_tensor
-        '''
-        '''
-        delta_target_decision_vecs_tensor = self.gru(
-            selected_mention_gloss_vec_tensor.unsqueeze(0).expand(N, -1),
-            target_decision_vecs_tensor
-        )
-        '''
-        delta_target_decision_vecs_tensor = self.U(F.relu(self.V1(selected_mention_gloss_vec_tensor)+self.V2(target_mention_gloss_vecs_tensor)))
+        delta_target_decision_vecs_tensor = self.U(torch.relu((self.V1(selected_mention_gloss_vec_tensor)+self.V2(target_mention_gloss_vecs_tensor))))
         updated_target_decision_vecs_tensor = target_decision_vecs_tensor + attn * delta_target_decision_vecs_tensor
+        '''
+        proposal = self.gru1(target_mention_gloss_vecs_tensor, selected_gloss_vec_tensor.unsqueeze(0).expand(N, -1))
+        updated_target_decision_vecs_tensor = self.gru2(proposal, selected_decision_vec_tensor.unsqueeze(0).expand(N, -1))
 
         return updated_target_decision_vecs_tensor
