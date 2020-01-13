@@ -4,7 +4,7 @@ from __future__ import absolute_import, division, print_function
 import torch.nn.functional as F
 from torch.nn.utils import clip_grad_norm_
 from torch.optim import AdamW
-from torch.utils.data import (DataLoader, SequentialSampler)
+from torch.utils.data import (DataLoader, SequentialSampler, RandomSampler)
 from tqdm import trange
 
 from dataset.sampler import NegDownSampler
@@ -18,9 +18,9 @@ logger = logging.getLogger(__name__)
 
 
 def compute_reward(new_logits, ori_logits, label_tensor, sep_pos, num_instances, sample_probs, selected_instance_idx, alpha=0.5):
-    new_sense_wise_cross_entropy = F.cross_entropy(new_logits, label_tensor, reduction='none')
+    new_sense_wise_cross_entropy = F.cross_entropy(new_logits, label_tensor, weight=torch.tensor([1, 8], dtype=torch.float, device=device), reduction='none')
     new_sum_cross_entropy = new_sense_wise_cross_entropy.sum()
-    ori_sense_wise_cross_entropy = F.cross_entropy(ori_logits, label_tensor, reduction='none')
+    ori_sense_wise_cross_entropy = F.cross_entropy(ori_logits, label_tensor, weight=torch.tensor([1, 8], dtype=torch.float, device=device), reduction='none')
     ori_sum_cross_entropy = ori_sense_wise_cross_entropy.sum()
 
     instance_wise_sum_cross_entropy = []
@@ -277,10 +277,10 @@ def eval_baseline(model, dataset):
 def agent_pretrain(base_model, agent_model, dataset):
     base_model.eval()
     agent_model.train()
-    sampler = SequentialSampler(dataset)
-    #sampler = RandomSampler(dataset)
+    #sampler = SequentialSampler(dataset)
+    sampler = RandomSampler(dataset)
     agent_pretrain_dataloader = DataLoader(dataset, sampler=sampler, batch_size=1, collate_fn=lambda x: x)
-    agent_optimizer = AdamW(agent_model.parameters(), lr=args.learning_rate,weight_decay=1)
+    agent_optimizer = AdamW(agent_model.parameters(), lr=args.learning_rate,weight_decay=5)
     observe_interval = 100
 
     for epoch in trange(int(args.num_train_epochs), desc="Epoch"):
@@ -333,7 +333,7 @@ def agent_pretrain(base_model, agent_model, dataset):
                     new_pred_list.append(pred)
                 reward, WSD_reward, instance_select_reward = compute_reward(new_logits, ori_logits, label_tensor, sep_pos,
                                                                             len(valid_instances), next_sample_probs,
-                                                                            selected_instance_idx, alpha=0.8)
+                                                                            selected_instance_idx, alpha=0.5)
                 tmp_reward += reward
                 tmp_WSD_reward += WSD_reward.item()
                 tmp_instance_select_reward += instance_select_reward.item()
@@ -424,6 +424,7 @@ def eval(base_model, agent_model, dataset):
             print('Step: %d, avg_WSD_reward: %.4f' % (step, total_WSD_reward/observe_interval))
             total_WSD_reward = 0
     wf.close()
+
 
 if __name__ == '__main__':
     bert_pretrain_logger = logging.getLogger(__name__)
