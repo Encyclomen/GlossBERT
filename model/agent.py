@@ -18,7 +18,7 @@ def random_pick(some_list, probabilities):
 
 
 class Agent(nn.Module):
-    def __init__(self, hidden_size):
+    def __init__(self, hidden_size, init_classifier):
         super(Agent, self).__init__()
         self.scorer = nn.Sequential(nn.Linear(hidden_size+hidden_size, hidden_size), nn.ReLU(), nn.Linear(hidden_size, 1))
         self.gru1 = nn.GRUCell(hidden_size+hidden_size, hidden_size)
@@ -29,6 +29,7 @@ class Agent(nn.Module):
         self.V1 = nn.Linear(hidden_size + hidden_size, hidden_size)
         self.V2 = nn.Linear(hidden_size + hidden_size, hidden_size)
         self.U = nn.Linear(hidden_size, hidden_size)
+        self.classifier = copy.deepcopy(init_classifier)
 
     def forward(self, base_model, instances, init_all_decision_vecs_tensor, mention_aware_gloss_tensor, sep_pos, init_pred_list, mode='single-step-train', num_sample=5):
         assert mode in ['train', 'single-step-train', 'eval']
@@ -41,7 +42,7 @@ class Agent(nn.Module):
             all_mention_aware_gloss_tensors_list.append(mention_aware_gloss_tensor[sep_pos[left_instances_idx[i]]:sep_pos[left_instances_idx[i]+1]])
         pred_list = init_pred_list
         #sep_len = [sep_pos[i+1] - sep_pos[i] for i in range(len(sep_pos)-1)]
-        while len(left_instances_idx) > 1:
+        while len(left_instances_idx) > 0:
             decision_vec_tensors_list = []
             mention_aware_gloss_tensors_list = []
             for left_instance_idx in left_instances_idx:
@@ -71,7 +72,7 @@ class Agent(nn.Module):
                                                                                        target_decision_vecs_tensor,
                                                                                        target_gloss_vecs_tensor)
                         tmp_all_decision_vec_tensors_list[left_instance_idx] = updated_target_decision_vecs_tensor
-                    new_logits = base_model.classifier(torch.cat(tmp_all_decision_vec_tensors_list, dim=0))
+                    new_logits = self.classifier(torch.cat(tmp_all_decision_vec_tensors_list, dim=0))
                     new_logits_list.append(new_logits)
                     selected_instance_idx_list.append(selected_instance_idx)
                 if mode == 'single-step-train':

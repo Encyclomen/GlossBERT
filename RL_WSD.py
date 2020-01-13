@@ -321,10 +321,10 @@ def agent_pretrain(base_model, agent_model, dataset):
             tmp_WSD_reward = 0
             tmp_instance_select_reward= 0
 
-            new_logits_list, next_sample_probs, selected_instance_idx_list = agent_model(base_model, valid_instances, final_target_hidden_batch_tensor,
+            result = agent_model(base_model, valid_instances, final_target_hidden_batch_tensor,
                                                                                      mention_aware_gloss_hidden_tensors_list, sep_pos, pred_list,
                                                                                      mode='single-step-train', num_sample=args.num_sample)
-
+            new_logits_list, next_sample_probs, selected_instance_idx_list = result
             for new_logits, selected_instance_idx in zip(new_logits_list, selected_instance_idx_list):
                 new_probs = F.softmax(new_logits, dim=-1)
                 new_pred_list = []
@@ -341,6 +341,7 @@ def agent_pretrain(base_model, agent_model, dataset):
             if accum_batch_size >= args.train_batch_size:
                 clip_grad_norm_(agent_model.parameters(), 1.0, norm_type=2)
                 agent_optimizer.step()
+                agent_optimizer.zero_grad()
                 accum_batch_size = 0
 
             total_reward += tmp_reward.item() / args.num_sample
@@ -376,8 +377,8 @@ def eval(base_model, agent_model, dataset):
     total_num_example = 0
     total_WSD_reward = 0
     for step, batch in enumerate(tqdm(agent_pretrain_dataloader, desc="Iteration"), start=1):
-        #cur_sentence = batch[0]
-        cur_sentence = dataset[1]
+        cur_sentence = batch[0]
+        #cur_sentence = dataset[1]
         valid_instances, sep_pos, feature_batch = convert_sentence_to_feature_batch(cur_sentence,
                                                                                     args.max_seq_length, tokenizer)
         guid, cand_sense_key, input_ids, input_mask, segment_ids, start_id, end_id, label = zip(*feature_batch)
@@ -402,9 +403,9 @@ def eval(base_model, agent_model, dataset):
         for i in range(len(valid_instances)):
             pred = ori_probs[sep_pos[i]: sep_pos[i + 1], 1].argmax().item()
             pred_list.append(pred)
-
-        new_logits = agent_model(base_model, valid_instances, final_target_hidden_batch_tensor,
-                                 mention_aware_gloss_hidden_tensors_list, sep_pos, pred_list, mode='eval')
+        with torch.no_grad():
+            new_logits = agent_model(base_model, valid_instances, final_target_hidden_batch_tensor,
+                                     mention_aware_gloss_hidden_tensors_list, sep_pos, pred_list, mode='eval')
         pred_tensor = new_logits.argmax(dim=1)
         total_num_correct_pred += (pred_tensor == label_tensor).sum().item()
         total_num_example += batch_size
@@ -418,7 +419,7 @@ def eval(base_model, agent_model, dataset):
         WSD_reward = compute_reward2(new_logits, ori_logits, label_tensor, sep_pos, len(valid_instances))
 
         #wf.close()
-        total_WSD_reward += WSD_reward.item() / args.num_agent_sample
+        total_WSD_reward += WSD_reward.item() / args.num_sample
 
         if step % observe_interval == 0:
             print('Step: %d, avg_WSD_reward: %.4f' % (step, total_WSD_reward/observe_interval))
@@ -484,7 +485,7 @@ if __name__ == '__main__':
         bert_model = BertModel.from_pretrained(bert_dir)
         base_model = BaseModel(bert_model).to(device)
         base_model.load_state_dict(torch.load(args.checkpoint, map_location=torch.device('cpu')))
-        agent_model = Agent(hidden_size=768).to(device)
+        agent_model = Agent(hidden_size=768, init_classifier=base_model.classifier).to(device)
         #agent_model.load_state_dict(torch.load('output/0_agent.bin', map_location=torch.device('cpu')))
         agent_pretrain(base_model, agent_model, glossbert_dataset)
     elif args.mode == 'RL-eval':
@@ -496,6 +497,6 @@ if __name__ == '__main__':
         bert_model = BertModel.from_pretrained(bert_dir)
         base_model = BaseModel(bert_model).to(device)
         base_model.load_state_dict(torch.load(args.checkpoint, map_location=torch.device('cpu')))
-        agent_model = Agent(hidden_size=768).to(device)
+        agent_model = Agent(hidden_size=768, init_classifier=base_model.classifier).to(device)
         agent_model.load_state_dict(torch.load('output/0_agent.bin', map_location=torch.device('cpu')))
         eval(base_model, agent_model, glossbert_dataset)
